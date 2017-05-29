@@ -1,5 +1,0 @@
-PREFIX eurostat: <http://mu.semte.ch/eurostat/>
-PREFIX mu: <http://mu.semte.ch/application/>
-
-eurostat:class1 a eurostat:ECOICOP .
-eurostat:class1 mu:name "rice" .

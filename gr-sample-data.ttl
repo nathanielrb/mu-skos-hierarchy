@@ -1,7 +1,0 @@
-PREFIX eurostat: <http://mu.semte.ch/eurostat/>
-PREFIX mu: <http://mu.semte.ch/application/>
-
-eurostat:product1 a eurostat:Product .
-eurostat:product1 mu:gtin "12345" .
-eurostat:product1 mu:description "a can of soda" .
-eurostat:product1 mu:class eurostat:class1 .

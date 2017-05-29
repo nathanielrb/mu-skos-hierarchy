@@ -10,10 +10,10 @@
 
 (development-mode? #t)
 (debug-file "./debug.log")
-(*print-queries?* #f)
+(*print-queries?* #t)
 
 (*default-graph* (or (get-environment-variable "MU_DEFAULT_GRAPH")
-                     "http://data.europa.eu/eurostat/ECOICOP"))
+                     '<http://data.europa.eu/eurostat/ECOICOP>))
 
 (*sparql-endpoint* (or (get-environment-variable "SPARQL_ENDPOINT")
                        "http://172.31.63.185:8890/sparql?"))
@@ -34,26 +34,26 @@
 (define (descendance-query vars scheme child parent)
   (select-triples
    vars
-   (format #f (conc "~A skos:inScheme <~A>.~%"
+   (format #f (conc "~A skos:inScheme ~A.~%"
                      "~A skos:broader ~A.~%")
-           child scheme child parent)))
+           (reify child) (reify scheme) (reify child) (reify parent))))
 
 (define (descendants-query node)
-  (descendance-query "?x" (scheme) "?x" node))
+  (descendance-query "?x" (scheme) '?x node))
 
 (define (ancestors-query node)
-  (descendance-query "?x" (scheme) node "?x"))
+  (descendance-query "?x" (scheme) node '?x))
 
 ;; this shouldn't be hard-coded
 ;; get all properties? or...
 (define (properties-query node)
   (select-triples
    "?name, ?description"
-   (format #f (conc "<~A> skos:altLabel ?name.~%"
-                     "<~A> skos:prefLabel ?description.~%"
+   (format #f (conc "~A skos:altLabel ?name.~%"
+                     "~A skos:prefLabel ?description.~%"
                      "FILTER (lang(?name) = 'en')~%"
                      "FILTER (lang(?description) = 'en')~%")
-           node node)))
+           (reify node) (reify node))))
 
 (define-syntax hit-cache
   (syntax-rules ()
@@ -62,22 +62,28 @@
          (put! sym prop body)))))
 
 (define (get-descendants node)
-  (let ((n (string->symbol node)))
+  (let ((n node)) ;(string->symbol node)))
     (hit-cache n 'descendants
-               (query-with-vars (x) (descendants-query (conc "<" node ">")) x))))
+               (query-with-vars
+                (x)
+                (descendants-query node) ;(conc "<" node ">")) 
+                x))))
 
 (define (get-ancestors node)
-  (let ((n (string->symbol node)))
+  (let ((n node));  (string->symbol node)))
     (hit-cache n 'ancestors
-               (query-with-vars (x) (ancestors-query (conc "<" node ">")) x))))
+               (query-with-vars 
+                (x)
+                (ancestors-query node);  (conc "<" node ">")) 
+                x))))
 
 (define (car-when l)
   (if (null? l) '() (car l)))
 
 (define (node-properties node)
-  (let ((n (string->symbol node)))
+  (let ((n node)); (string->symbol node)))
     (hit-cache n 'properties
-               (append (list (cons 'id node))
+               (append (list (cons 'id (write-uri node)))
                        (car-when
                         (query-with-vars
                          (name description)
@@ -109,13 +115,14 @@
     (let ((levels ($ 'levels)))
       `((data .
               ,(forward-tree
-                (ns ($path 'id)) 
+                (ns ($path 'id))
                 (and levels (string->number levels))))))))
 
 (define-rest-page-fn (($path "/hierarchies/:id/ancestors"))
   (lambda ()
     (let ((levels ($ 'levels)))
-      (reverse-tree (ns ($path 'id))
-                            (and levels (string->number levels))))))
+      (reverse-tree 
+       (ns ($path 'id))
+       (and levels (string->number levels))))))
 
 
