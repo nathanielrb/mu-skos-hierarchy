@@ -4,9 +4,9 @@
 
 (use awful srfi-69 irregex)
 
-(load "sparql.scm")
-(load "rest.scm")
-(load "threads.scm")
+(load "s-sparql/sparql.scm")
+(load "s-sparql/rest.scm")
+(load "s-sparql/threads.scm")
 
 (development-mode? #t)
 (debug-file "./debug.log") ;; **conf
@@ -148,19 +148,19 @@
   (let ((node (get-node uuid)))
     (tree get-ancestors node levels)))
 
-(define-rest-page-fn (($path "/hierarchies/:id/descendants"))
+(define-rest-call ((id) "/hierarchies/:id/descendants")
   (lambda ()
     (let ((levels ($ 'levels)))
       `((data .
               ,(forward-tree
-                ($path 'id)
+                id
                 (and levels (string->number levels))))))))
 
-(define-rest-page-fn (($path "/hierarchies/:id/ancestors"))
+(define-rest-call ((id) "/hierarchies/:id/ancestors")
   (lambda ()
     (let ((levels ($ 'levels)))
       (reverse-tree 
-        ($path 'id)
+       id
        (and levels (string->number levels))))))
 
 
