@@ -19,9 +19,9 @@
                        "http://172.31.63.185:8890/sparql?"))
 
 (define-namespace taxonomy "http://data.europa.eu/eurostat/id/taxonomy/")
-
 (define-namespace skos "http://www.w3.org/2004/02/skos/core#")
-
+(define-namespace mu "http://mu.semte.ch/vocabularies/core/")
+(define-namespace concept "http://data.europa.eu/eurostat/id/taxonomy/ECOICOP/concept/")
 
 (define node-namespace (or "http://data.europa.eu/eurostat/id/taxonomy/ECOICOP/concept/"))
 
@@ -34,9 +34,8 @@
 (define (descendance-query vars scheme child parent)
   (select-triples
    vars
-   (format #f (conc "~A skos:inScheme ~A.~%"
-                     "~A skos:broader ~A.~%")
-           (reify child) (reify scheme) (reify child) (reify parent))))
+   (s-triples `((,child skos:inScheme ,scheme)
+               (,child skos:broader ,parent)))))
 
 (define (descendants-query node)
   (descendance-query "?x" (scheme) '?x node))
@@ -48,12 +47,14 @@
 ;; get all properties? or...
 (define (properties-query node)
   (select-triples
-   "?name, ?description"
-   (format #f (conc "~A skos:altLabel ?name.~%"
-                     "~A skos:prefLabel ?description.~%"
-                     "FILTER (lang(?name) = 'en')~%"
-                     "FILTER (lang(?description) = 'en')~%")
-           (reify node) (reify node))))
+   "?name, ?description, ?uuid"
+   (conc (s-optional (conc (s-triple `(,node skos:altLabel ?name))
+                           "FILTER (lang(?name) = 'en')\n"))
+         (s-optional (conc (s-triple `(,node skos:prefLabel ?description))
+                           "FILTER (lang(?description) = 'en')\n"))
+         (s-triple `(,node mu:uuid ?uuid)))))
+         
+
 
 (define-syntax hit-cache
   (syntax-rules ()
@@ -80,49 +81,84 @@
 (define (car-when l)
   (if (null? l) '() (car l)))
 
+
 (define (node-properties node)
   (let ((n node)); (string->symbol node)))
     (hit-cache n 'properties
-               (append (list (cons 'id (write-uri node)))
-                       (car-when
-                        (query-with-vars
-                         (name description)
-                         (properties-query node)
-                         (list
-                          (cons 'name name)
-                          (cons 'description description))))))))
+               (append (list (cons 'id (write-uri node))
+                             (cons 'type "TYPE")
+                             (cons 'attributes
+                                   (car-when
+                                    (query-with-vars
+                                     (name description uuid)
+                                     (properties-query node)
+                                     (list
+                                      (cons 'id uuid)
+                                      (cons 'name name)
+                                      (cons 'description description))))))))))
+(define (node-properties node)
+  (let ((n node)); (string->symbol node)))
+    (hit-cache n 'properties
+               (car 
+                (query-with-vars
+                 (name description uuid)
+                 (properties-query node)
+                 `((@id . ,(write-uri node))
+                   (id . ,uuid)
+                   (type . "concept")
+                   (attributes .
+                     (,@(if name `((name . ,name)) '())
+                      ,@(if description `((description . ,description)) '())))))))))
+
 
 (define (tree next-fn node #!optional levels)
   (if (eq? levels 0)
       (node-properties node)
-      (append (node-properties node)
-              (list (cons 'children
-                          (list->vector
-                           (pmap-batch
-                            100
-                            (lambda (e)
-                              (tree next-fn e (and levels (- levels 1))))
-                            (next-fn node))))))))
+      (let ((children (pmap-batch
+                       100
+                       (lambda (e)
+                         (tree next-fn e (and levels (- levels 1))))
+                       (next-fn node))))
+        (if (null? children)
+            (node-properties node)
+            (append (node-properties node)
+                    `((relationships .
+                                     ((children .
+                                                ((data .
+                            ,(list->vector children))))))))))))
 
 (define (forward-tree node #!optional levels)
   (tree get-descendants node levels))
 
-(define (reverse-tree node #!optional levels)
-  (tree get-ancestors node levels))
+(define (get-node uuid)
+  (car
+   (query-with-vars (node)
+     (select-triples
+      "?node"
+      (s-triples `((?node mu:uuid ,uuid))))
+      node)))
+
+(define (forward-tree uuid #!optional levels)
+  (let ((node (get-node uuid)))
+    (tree get-descendants node levels)))
+
+(define (reverse-tree uuid #!optional levels)
+  (let ((node (get-node uuid)))
+    (tree get-ancestors node levels)))
 
 (define-rest-page-fn (($path "/hierarchies/:id/descendants"))
   (lambda ()
     (let ((levels ($ 'levels)))
       `((data .
               ,(forward-tree
-                (ns ($path 'id))
+                ($path 'id) ;;(ns ($path 'id))
                 (and levels (string->number levels))))))))
 
 (define-rest-page-fn (($path "/hierarchies/:id/ancestors"))
   (lambda ()
     (let ((levels ($ 'levels)))
       (reverse-tree 
-       (ns ($path 'id))
+        ($path 'id)
        (and levels (string->number levels))))))
 
 

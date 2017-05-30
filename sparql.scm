@@ -23,6 +23,9 @@
           ((symbol? x) (symbol->string x))
 	  ((namespace-pair? x) (expand-namespace x))))
 
+(define (new-sparql-variable)
+  (string->symbol (conc "?" (->string (gensym)))))
+
 (define (s-triple trip)
   (match-let (((a b c) trip))
     (format #f "~A ~A ~A."
@@ -38,13 +41,16 @@
 
 (define (graph-statement graph statements)
   (if graph
-      (format #f "{ GRAPH ~A { ~A } }"
+      (format #f "GRAPH ~A { ~A } ."
               (reify graph)
               statements)
-      (format #f "{ ~A }" statements)))
+      statements))
 
 (define (union statements)
-  (string-join statements " UNION "))
+  (string-join (map bracketed statements) " UNION "))
+
+(define (s-optional statement)
+  (format #f "OPTIONAL { ~A }" statement))
 
 (define (triples trips)
   (string-join trips "\n"))
@@ -222,8 +228,21 @@
 
 ;; (define-syntax query-with-bindings
 
+(define-syntax query-with-vars1
+  (syntax-rules ()
+    ((query-with-vars (vars ...) query form)
+     (map (match-lambda (((_ . vars) ...) form))
+	  (sparql/select query)))))
+
+(define-syntax with-bindings
+  (syntax-rules ()
+    ((with-bindings (vars ...) bindings body ...)
+     (let ((vars (alist-ref (quote vars) bindings)) ...)
+       body ...))))
+
 (define-syntax query-with-vars
   (syntax-rules ()
-    ((match-sparql (vars ...) query form)
-     (map (match-lambda (((_ . vars) ...) form))
+    ((query-with-vars (vars ...) query form)
+     (map (lambda (bindings)
+            (with-bindings (vars ...) bindings form))
 	  (sparql/select query)))))
