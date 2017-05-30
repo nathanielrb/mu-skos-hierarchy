@@ -1,7 +1,3 @@
-;; TODO
-;; - what about those language filters??
-;; - or get all properties??
-
 (use awful srfi-69 irregex)
 
 (load "s-sparql/sparql.scm")
@@ -10,88 +6,80 @@
 
 (development-mode? #t)
 
-(debug-file
- (or (get-environment-variable "LOG_FILE")
-     "./debug.log"))
-
 (*print-queries?* #t)
 
 (define-namespace skos "http://www.w3.org/2004/02/skos/core#")
-(define-namespace mu "http://mu.semte.ch/vocabularies/core/")
 
-(*default-graph* 
- (or  (read-uri (get-environment-variable "MU_DEFAULT_GRAPH"))
-      (*default-graph*)))
-;      "http://data.europa.eu/eurostat/ECOICOP")))
+(define lang
+  (make-parameter
+   (or (get-environment-variable "DEFAULT_LANGUAGE")
+       "en")))
 
-(*sparql-endpoint* (or (get-environment-variable "SPARQL_ENDPOINT")
-                       "http://127.0.0.1:8890/sparql")) ;; DOCKER??
-                       ;"http://172.31.63.185:8890/sparql?"))
-
-(define scheme (make-parameter
-                (read-uri
-                  (get-environment-variable "CONCEPT_SCHEME"))))
-                  ;;"http://data.europa.eu/eurostat/id/taxonomy/ECOICOP"))))
+(define scheme
+  (make-parameter
+   (read-uri
+    (get-environment-variable "CONCEPT_SCHEME"))))
 
 (define *property-definitions*
-   (get-environment-variable "INCLUDED_PROPERTIES"))
-;      "name=skos:altLabel,description=skos:prefLabel,notation=skos:notation"))
+  (or (get-environment-variable "INCLUDED_PROPERTIES")
+      ""))
 
 (define *properties*
   (map (lambda (str) 
          (map string->symbol (string-split str "="))) 
        (string-split *property-definitions* ",")))
 
-(define *namespace-definitions*
-  (or (get-environment-variable "NAMESPACES")
-      "skos: http://www.w3.org/2004/02/skos/core#"))
-
-(define *defined-namespaces*
-  (map (lambda (ns) 
-         (match-let (((prefix uri)
-                      (irregex-split ": " ns)))
-           (register-namespace (string->symbol prefix)                                
-                               uri)))
-       (string-split *namespace-definitions* ",")))
-       
-(define-syntax hit-property-cache
-  (syntax-rules ()
-    ((hit-property-cache sym prop body)
-     (or (get sym prop)
-         (put! sym prop body)))))
-    
 (define (descendance-query vars scheme child parent)
   (select-triples
    vars
    (s-triples `((,child skos:inScheme ,scheme)
                 (,child skos:broader ,parent)))))
 
+(define (descendance-query vars scheme child parent)
+  (select-triples
+   (cons '?uuid vars)
+   (s-triples `((,child skos:inScheme ,scheme)
+                (,child skos:broader ,parent)
+                (,child mu:uuid ?uuid)))))
+
 (define (descendants-query node)
-  (descendance-query "?x" (scheme) '?x node))
+  (descendance-query '(?x) (scheme) '?x node))
 
 (define (ancestors-query node)
-  (descendance-query "?x" (scheme) node '?x))
+  (descendance-query '(?x) (scheme) node '?x))
 
 (define (get-node uuid)
   (query-unique-with-vars (node)
      (select-triples
-      "?node"
+      '?node
       (s-triples `((?node mu:uuid ,uuid))))
      node))
+
+(define (get-top-concept)
+  (query-unique-with-vars (node uuid)
+     (select-triples
+      '(?node ?uuid)
+      (s-triples `((?node skos:topConceptOf ,(scheme))
+                   (?node mu:uuid ?uuid))))
+      (cons uuid node)))
          
 (define (get-descendants node)
   (hit-property-cache node 'descendants
-             (query-with-vars
-              (x)
-              (descendants-query node) ;(conc "<" node ">")) 
-              x)))
+                      (query-with-vars
+                       (uuid x)
+                       (descendants-query node)
+                       (cons uuid x))))
 
 (define (get-ancestors node)
   (hit-property-cache node 'ancestors
              (query-with-vars 
-              (x)
+              (uuid x)
               (ancestors-query node)
-              x)))
+              (cons uuid x))))
+
+(define (lang-or-none-filter var lang)
+  (format #f "lang(~A) = '~A' || lang(~A) = ''" 
+          var lang var))
 
 (define property-query
   (match-lambda 
@@ -102,19 +90,15 @@
                (s-optional
                 (s-filter
                  (s-triple `(,node ,predicate ,var))
-                 (format #f "lang(~A) = 'en' || lang(~A) = ''" var var)))))))))
+                 (lang-or-none-filter var (lang))))))))))
 
 (define (properties-query node)
   (let* ((property-queries (map (lambda (pq) (pq node)) 
                                 (map property-query *properties*)))
-         (vars (cons "?uuid" (map ->string (map car property-queries))))
-         (queries (cons (s-triple `(,node mu:uuid ?uuid))
-                        (map cdr property-queries))))
-    (let ((values (car-when
-                   (sparql/select
-                    (select-triples
-                     (string-join vars ", ")
-                     (string-join queries "\n"))))))
+         (vars (map car property-queries))
+         (queries (map cdr property-queries)))
+    (let ((values (sparql/select-unique
+                   (select-triples vars queries))))
       (filter (lambda (value-pair)
                 (cdr value-pair))
               values))))
@@ -122,48 +106,66 @@
 (define (node-properties node)
   (hit-property-cache 
    node 'properties
-   (let ((properties (properties-query node)))
-     `((id . ,(alist-ref 'uuid properties))
-       (type . "concept")
-       (attributes . ,(alist-delete 'uuid properties))))))
-             
-(define (tree next-fn node #!optional levels (relation 'children))
+   (if-pair? *properties*
+             (let ((properties (properties-query node)))
+               properties))))
+
+(define (tree next-fn node-pair #!optional levels #!key (relation 'children))
+  (match-let (((uuid . node) node-pair))
+             (if (eq? levels 0)
+                 (node-properties node)
+                 (let ((children (pmap-batch
+                                  100
+                                  (lambda (e)
+                                    (tree next-fn e (and levels (- levels 1))))
+                                  (next-fn node))))
+                   (append `((id . ,uuid)
+                             (type . "concept"))
+                           (node-properties node)
+                           (if-pair? children
+                                     `((relationships 
+                                        . ((,relation
+                                            . ((data
+                                                . ,(list->vector children)))))))))))))
+
+(define (tree1 next-fn node #!optional levels #!key (relation 'children))
+  (print node)
   (if (eq? levels 0)
-      (node-properties node)
+      (node-properties (cdr node))
       (let ((children (pmap-batch
                        100
                        (lambda (e)
                          (tree next-fn e (and levels (- levels 1))))
-                       (next-fn node))))
+                       (next-fn (cdr node)))))
         (if (null? children)
-            (node-properties node)
-            (append (node-properties node)
-                    `((relationships .
-                                     ((,relation .
-                                                ((data .
-                            ,(list->vector children))))))))))))
+            (node-properties (cdr node))
+            (append (node-properties (cdr node))
+                    `((relationships 
+                       . ((,relation
+                           . ((data
+                               . ,(list->vector children))))))))))))
 
-(define (forward-tree uuid #!optional levels)
+(define (forward-tree uuid #!key levels)
   (let ((node (get-node uuid)))
-    (tree get-descendants node levels)))
+    (vector (tree get-descendants node levels))))
 
 (define (reverse-tree uuid #!optional levels)
   (let ((node (get-node uuid)))
-    (tree get-ancestors node levels 'parents)))
+    (vector (tree get-ancestors node levels #:relation 'parents))))
+
+(define-rest-call (() "/hierarchies")
+  (lambda ()
+    `((data 
+       . ,(tree get-descendants (get-top-concept) (str->num ($ 'levels)))))))
 
 (define-rest-call ((id) "/hierarchies/:id/descendants")
   (lambda ()
-    (let ((levels ($ 'levels)))
-      `((data .
-              ,(forward-tree
-                id
-                (and levels (string->number levels))))))))
+    `((data 
+       . ,(forward-tree id
+                        #:levels (str->num ($ 'levels)))))))
 
 (define-rest-call ((id) "/hierarchies/:id/ancestors")
   (lambda ()
-    (let ((levels ($ 'levels)))
-      (reverse-tree 
-       id
-       (and levels (string->number levels))))))
-
+    (reverse-tree 
+     id (str->num ($ 'levels)))))
 
