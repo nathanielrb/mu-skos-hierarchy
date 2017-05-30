@@ -9,25 +9,33 @@
 (load "s-sparql/threads.scm")
 
 (development-mode? #t)
-(debug-file "./debug.log") ;; **conf
+
+(debug-file
+ (or (get-environment-variable "LOG_FILE")
+     "./debug.log"))
+
 (*print-queries?* #t)
 
 (define-namespace skos "http://www.w3.org/2004/02/skos/core#")
 (define-namespace mu "http://mu.semte.ch/vocabularies/core/")
 
-(*default-graph* (or (get-environment-variable "MU_DEFAULT_GRAPH")
-                     '<http://data.europa.eu/eurostat/ECOICOP>))
+(*default-graph* 
+ (or  (read-uri (get-environment-variable "MU_DEFAULT_GRAPH"))
+      (*default-graph*)))
+;      "http://data.europa.eu/eurostat/ECOICOP")))
 
 (*sparql-endpoint* (or (get-environment-variable "SPARQL_ENDPOINT")
-                       "http://172.31.63.185:8890/sparql?"))
+                       "http://127.0.0.1:8890/sparql")) ;; DOCKER??
+                       ;"http://172.31.63.185:8890/sparql?"))
 
 (define scheme (make-parameter
-                (or (get-environment-variable "CONCEPT_SCHEME")
-                    '<http://data.europa.eu/eurostat/id/taxonomy/ECOICOP>)))
+                (read-uri
+                  (get-environment-variable "CONCEPT_SCHEME"))))
+                  ;;"http://data.europa.eu/eurostat/id/taxonomy/ECOICOP"))))
 
 (define *property-definitions*
-  (or (get-environment-variable "INCLUDED_PROPERTIES")
-      "name=skos:altLabel,description=skos:prefLabel,notation=skos:notation"))
+   (get-environment-variable "INCLUDED_PROPERTIES"))
+;      "name=skos:altLabel,description=skos:prefLabel,notation=skos:notation"))
 
 (define *properties*
   (map (lambda (str) 
@@ -40,15 +48,13 @@
 
 (define *defined-namespaces*
   (map (lambda (ns) 
-         (print ns)
-         (print (irregex-split ": " ns))
          (match-let (((prefix uri)
                       (irregex-split ": " ns)))
            (register-namespace (string->symbol prefix)                                
                                uri)))
        (string-split *namespace-definitions* ",")))
        
-(define-syntax hit-cache
+(define-syntax hit-property-cache
   (syntax-rules ()
     ((hit-property-cache sym prop body)
      (or (get sym prop)
@@ -74,14 +80,14 @@
      node))
          
 (define (get-descendants node)
-  (hit-cache node 'descendants
+  (hit-property-cache node 'descendants
              (query-with-vars
               (x)
               (descendants-query node) ;(conc "<" node ">")) 
               x)))
 
 (define (get-ancestors node)
-  (hit-cache node 'ancestors
+  (hit-property-cache node 'ancestors
              (query-with-vars 
               (x)
               (ancestors-query node)
@@ -114,14 +120,14 @@
               values))))
 
 (define (node-properties node)
-  (hit-cache 
+  (hit-property-cache 
    node 'properties
    (let ((properties (properties-query node)))
      `((id . ,(alist-ref 'uuid properties))
        (type . "concept")
        (attributes . ,(alist-delete 'uuid properties))))))
              
-(define (tree next-fn node #!optional levels)
+(define (tree next-fn node #!optional levels (relation 'children))
   (if (eq? levels 0)
       (node-properties node)
       (let ((children (pmap-batch
@@ -133,12 +139,9 @@
             (node-properties node)
             (append (node-properties node)
                     `((relationships .
-                                     ((children .
+                                     ((,relation .
                                                 ((data .
                             ,(list->vector children))))))))))))
-
-(define (forward-tree node #!optional levels)
-  (tree get-descendants node levels))
 
 (define (forward-tree uuid #!optional levels)
   (let ((node (get-node uuid)))
@@ -146,7 +149,7 @@
 
 (define (reverse-tree uuid #!optional levels)
   (let ((node (get-node uuid)))
-    (tree get-ancestors node levels)))
+    (tree get-ancestors node levels 'parents)))
 
 (define-rest-call ((id) "/hierarchies/:id/descendants")
   (lambda ()
