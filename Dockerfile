@@ -1,3 +1,3 @@
-FROM mu-chicken-template
+FROM nathanielrb/mu-chicken-template
 MAINTAINER "nathaniel"
 
