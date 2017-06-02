@@ -6,7 +6,6 @@
 
 (use s-sparql)
 (use s-sparql-rest)
-(require-extension sort-combinators)
 
 (development-mode? #f)
 
