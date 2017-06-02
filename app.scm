@@ -64,7 +64,7 @@
                properties))))
 
 (define (descendance parent-uuid levels relation #!optional inverse?)
-  (match-let (((vars . statements) 
+  (match-let (((vars order-by statements) 
                (descendance-query-all-statements '?parent levels inverse?)))
     (let ((results
            (sparql/select
@@ -72,7 +72,9 @@
              vars
              (s-triples
               `((?parent mu:uuid ,parent-uuid)
-                ,@statements))))))
+                ,@statements))
+             order-by: (string-join order-by " ")))))
+      (print ((partition-bindings substr-end unnumber) (car results)))
       (imbricate (map (partition-bindings substr-end unnumber) results) 
                  relation))))
 
@@ -106,18 +108,22 @@
 (define (descendance-query-all-statements parent levels #!optional inverse?)
   (let loop ((level levels)
              (vars '())
+             (parent parent)
+             (order-by '())
              (statements '()))
     (if (= level 0)
-        (cons vars statements)
+        (list vars order-by statements)
         (let ((uuid (sparql-variable (conc "uuid" (->string (- levels level)))))
               (node (sparql-variable (conc "child" (->string (- levels level))))))
           (loop (- level 1)
                 (append vars
                         (list node uuid)
                         (properties-variables (- levels level)))
+                node
+                (append order-by (list (->string node) ))
                 (append `(,(if inverse?
-                               `(,(or (car-when vars) parent) skos:broader ,node)
-                               `(,node skos:broader ,(or (car-when vars) parent)))
+                               `(,parent  skos:broader ,node) ;;(or (car-when vars) parent)
+                               `(,node skos:broader ,parent))
                           (,node mu:uuid ,uuid)
                           ,@(properties-query node (- levels level)))
                         statements))))))
