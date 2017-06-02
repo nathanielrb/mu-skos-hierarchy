@@ -73,7 +73,6 @@
               `((?parent mu:uuid ,parent-uuid)
                 ,@statements))
              order-by: (string-join order-by " ")))))
-      (print ((partition-bindings substr-end unnumber) (car results)))
       (imbricate (map (partition-bindings substr-end unnumber) results) 
                  relation))))
 
