@@ -63,39 +63,24 @@
              (let ((properties (properties-query node)))
                properties))))
 
-(define (descendance scheme parent-uuid levels)
-  (match-let (((all-vars . statements) 
-               (descendance-query-all-statements scheme '?parent levels)))
-    (let ((vars (drop-alternating (reverse all-vars)))
-          (results
+(define (descendance parent-uuid levels relation #!optional inverse?)
+  (match-let (((vars . statements) 
+               (descendance-query-all-statements '?parent levels inverse?)))
+    (let ((results
            (sparql/select
             (select-triples
-             all-vars
+             vars
              (s-triples
               `((?parent mu:uuid ,parent-uuid)
                 ,@statements))))))
-      (imbricate (map partition-bindings results)) )))
+      (imbricate (map (partition-bindings substr-end unnumber) results) 
+                 relation))))
 
-(define (drop-alternating l)
-  (if (or (null? l) (= (length l) 1))
-      l
-      (cons (car l) (drop-alternating (cddr l)))))
-
-(define (property-query n)
-  (match-lambda 
-    ((name predicate)
-     (let ((var (sparql-variable (conc name n))))
-       (lambda (node)
-;         (cons var
-               (s-optional
-                (s-filter
-                 (s-triple `(,node ,predicate ,var))
-                 (lang-or-none-filter var (lang)))))))))
-
-(define (properties-query var n)
-  (map (lambda (pq) (pq var))
-       (map (property-query n)
-            *properties*)))
+(define (unnumber var)
+  (let ((svar (->string var)))
+    (string->symbol (substring 
+                     svar 0
+                     (- (string-length svar) 1)))))
 
 (define (properties-variables n)
   (map (lambda (prop)
@@ -103,7 +88,22 @@
           (conc (car prop) n)))
        *properties*))
 
-(define (descendance-query-all-statements scheme parent levels)
+(define (property-query n)
+  (match-lambda 
+    ((name predicate)
+     (let ((var (sparql-variable (conc name n))))
+       (lambda (node)
+         (s-optional
+          (s-filter
+           (s-triple `(,node ,predicate ,var))
+           (lang-or-none-filter var (lang)))))))))
+
+(define (properties-query var n)
+  (map (lambda (pq) (pq var))
+       (map (property-query n)
+            *properties*)))
+
+(define (descendance-query-all-statements parent levels #!optional inverse?)
   (let loop ((level levels)
              (vars '())
              (statements '()))
@@ -112,14 +112,14 @@
         (let ((uuid (sparql-variable (conc "uuid" (->string (- levels level)))))
               (node (sparql-variable (conc "child" (->string (- levels level))))))
           (loop (- level 1)
-                ;(cons node (cons uuid vars))
                 (append vars
                         (list node uuid)
                         (properties-variables (- levels level)))
-                (append `((,node skos:broader ,(or (car-when vars) parent))
+                (append `(,(if inverse?
+                               `(,(or (car-when vars) parent) skos:broader ,node)
+                               `(,node skos:broader ,(or (car-when vars) parent)))
                           (,node mu:uuid ,uuid)
                           ,@(properties-query node level))
-                        
                         statements))))))
 
 (define (nuull? node)
@@ -149,64 +149,70 @@
 (define (gather-nodes key nodes #!optional (collect alist-tree-node))
   (gather-nodes-cps key nodes collect values))
 
-(define (imbricate cs)
-(list->vector
- (gather-nodes cdar (map (lambda (c) (map cdr c)) cs) json-node)))
+(define (imbricate cs relation)
+  (list->vector
+   (gather-nodes cdar (map (lambda (c) (map cdr c)) cs) (json-node relation))))
 
-(define (json-node node tree)
-  (print node)
-  (let ((id (cdar node))
-        (name (cdr-when (cdr-when node))))
-    `(((id . ,(->string id))
-       (name . ,name)
-     ;;
-       (relationships . ((data . ,(list->vector tree))))))))
+(define (json-node relation)
+  (lambda (node tree)
+    (let ((id (alist-ref 'uuid node)))
+      `(((id . ,(->string id))
+         ,@(map (lambda (prop)
+                  (cons prop (alist-ref prop node)))
+                (map car *properties*))
+         ,@(if (null? tree)
+               '()
+               `((relationships
+                  . ((,relation
+                      . ((data . ,(list->vector tree)))))))))))))
 
 (define (alist-tree-node val tree)
   (list (cons val tree)))
 
+(define (substr-end s #!optional (len 1))
+  (substring s (- (string-length s) len)))
 
-(define (partition-variables vars)
-  (if (null? vars)
-      '()
-      (let* ((first-var (->string (car vars)))
-             (n (substring first-var (- (string-length first-var) 1))))
-        (let-values (((part rest)
-                      (partition (lambda (x)
-                                   (let ((s (->string x)))
-                                     (equal? n (substring s (- (string-length s) 1)))))
-                                 vars)))
-          (append (list part) (partition-variables rest))))))
-
-(define (partition-bindings bindings)
-  (if (null? bindings)
-      '()
-      (let* ((first-binding (car bindings))
-             (first-var (->string (car first-binding)))
-             (n (substring first-var (- (string-length first-var) 1))))
-        (let-values (((part rest)
-                      (partition (lambda (x)
-                                   (let ((s (->string (car x))))
-                                     (equal? n (substring s (- (string-length s) 1)))))
-                                 bindings)))
-          (append (list part) (partition-bindings rest))))))
-
-(define (cs levels) (descendance
-            '<http://data.europa.eu/eurostat/id/taxonomy/ECOICOP>
-            "379436c4-08c3-459a-9b75-b094bdfdbaf4"
-            levels))
-
-(define-rest-call "/hierarchies"
-  (lambda ()
-    `((data 
-       . ,(tree get-descendants (get-top-concept) (str->num ($ 'levels)))))))
+(define (partition-bindings key proc)
+  (lambda (bindings)
+    (let loop ((bindings bindings))
+      (if (null? bindings)
+          '()
+          (let* ((first-binding (car bindings))
+                 (first-var (->string (car first-binding)))
+                 (n (key first-var)))
+            (let-values (((part rest)
+                          (partition (lambda (x)
+                                       (let ((s (->string (car x))))
+                                         (equal? n (key s))))
+                                     bindings)))
+              (append (list
+                       (map (lambda (pair)
+                              (cons (proc (car pair))
+                                    (cdr pair)))
+                            part))
+                      (loop rest))))))))
 
 (define-rest-call ((id) "/hierarchies/:id/descendants")
   (lambda ()
     `((data 
-       . ,(descendance (scheme) id (str->num (or ($ 'levels) "1")))))))
+       . ,(descendance id (str->num (or ($ 'levels) "1"))
+                       'children)))))
 
 (define-rest-call ((id) "/hierarchies/:id/ancestors")
   (lambda ()
-    (reverse-tree 
-     id (str->num ($ 'levels)))))
+    `((data 
+       . ,(descendance id (str->num (or ($ 'levels) "1"))
+                       'ancestors #t)))))
+
+(define-rest-call "/hierarchies"
+  (lambda ()
+    `((data 
+       . ,(descendance (get-top-concept) (str->num (or ($ 'levels) "1"))
+                       'ancestors)))))
+
+;; testing
+
+(define (cs levels) (descendance
+                     "379436c4-08c3-459a-9b75-b094bdfdbaf4"
+                     levels))
+
