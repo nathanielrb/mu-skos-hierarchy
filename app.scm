@@ -119,7 +119,7 @@
                                `(,(or (car-when vars) parent) skos:broader ,node)
                                `(,node skos:broader ,(or (car-when vars) parent)))
                           (,node mu:uuid ,uuid)
-                          ,@(properties-query node level))
+                          ,@(properties-query node (- levels level)))
                         statements))))))
 
 (define (nuull? node)
