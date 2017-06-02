@@ -1,7 +1,12 @@
-(use awful srfi-69 irregex matchable)
+(use awful srfi-69 irregex matchable medea)
+
+;(load "s-sparql/sparql.scm")
+;(load "s-sparql/rest.scm")
+; (load "s-sparql/threads.scm")
 
 (use s-sparql)
 (use s-sparql-rest)
+(require-extension sort-combinators)
 
 (development-mode? #f)
 
@@ -28,18 +33,17 @@
          (map string->symbol (string-split str "="))) 
        (string-split *property-definitions* ",")))
 
-(define (descendance-query vars scheme child parent)
-  (select-triples
-   (cons '?uuid vars)
-   (s-triples `((,child skos:inScheme ,scheme)
-                (,child skos:broader ,parent)
-                (,child mu:uuid ?uuid)))))
-
-(define (descendants-query node)
-  (descendance-query '(?node) (scheme) '?node node))
-
-(define (ancestors-query node)
-  (descendance-query '(?node) (scheme) node '?node))
+(define (get-top-concept)
+  (query-unique-with-vars (node uuid)
+     (select-triples
+      '?uuid
+      (s-triples `((?node skos:topConceptOf ,(scheme))
+                   (?node mu:uuid ?uuid))))
+     uuid))
+         
+(define (lang-or-none-filter var lang)
+  (format #f "lang(~A) = '~A' || lang(~A) = ''" 
+          var lang var))
 
 (define (get-node uuid)
   (query-unique-with-vars (node)
@@ -48,54 +52,9 @@
       (s-triples `((?node mu:uuid ,uuid))))
      (cons uuid node)))
 
-(define (get-top-concept)
-  (query-unique-with-vars (node uuid)
-     (select-triples
-      '(?node ?uuid)
-      (s-triples `((?node skos:topConceptOf ,(scheme))
-                   (?node mu:uuid ?uuid))))
-      (cons uuid node)))
-         
-(define (get-descendants node)
-  (hit-property-cache 
-   node 'descendants
-   (query-with-vars
-    (uuid node)
-    (descendants-query node)
-    (cons uuid node))))
-
-(define (get-ancestors node)
-  (hit-property-cache node 'ancestors
-             (query-with-vars 
-              (uuid x)
-              (ancestors-query node)
-              (cons uuid x))))
-
-(define (lang-or-none-filter var lang)
-  (format #f "lang(~A) = '~A' || lang(~A) = ''" 
-          var lang var))
-
-(define property-query
-  (match-lambda 
-    ((name predicate)
-     (let ((var (sparql-variable name)))
-       (lambda (node)
-         (cons var
-               (s-optional
-                (s-filter
-                 (s-triple `(,node ,predicate ,var))
-                 (lang-or-none-filter var (lang))))))))))
-
-(define (properties-query node)
-  (let* ((property-queries (map (lambda (pq) (pq node)) 
-                                (map property-query *properties*)))
-         (vars (map car property-queries))
-         (queries (map cdr property-queries)))
-    (let ((values (sparql/select-unique
-                   (select-triples vars queries))))
-      (filter (lambda (value-pair)
-                (cdr value-pair))
-              values))))
+(define (node-properties-id uuid)
+  (let ((node (cdr (get-node uuid))))
+    (node-properties node)))
 
 (define (node-properties node)
   (hit-property-cache 
@@ -104,45 +63,155 @@
              (let ((properties (properties-query node)))
                properties))))
 
-(define (tree next-fn node-pair #!optional levels #!key (relation 'children))
-  (match-let (((uuid . node) node-pair))
-             (if (eq? levels 0)
-                 (node-properties node)
-                 (let ((children (pmap-batch
-                                  100
-                                  (lambda (e)
-                                    (tree next-fn e (and levels (- levels 1))))
-                                  (next-fn node))))
-                   (append `((id . ,uuid)
-                             (type . "concept"))
-                           (node-properties node) 
-                           (if-pair? children
-                                     `((relationships 
-                                        . ((,relation
-                                            . ((data
-                                                . ,(list->vector children)))))))))))))
+(define (descendance parent-uuid levels relation #!optional inverse?)
+  (match-let (((vars . statements) 
+               (descendance-query-all-statements '?parent levels inverse?)))
+    (let ((results
+           (sparql/select
+            (select-triples
+             vars
+             (s-triples
+              `((?parent mu:uuid ,parent-uuid)
+                ,@statements))))))
+      (imbricate (map (partition-bindings substr-end unnumber) results) 
+                 relation))))
 
-(define (forward-tree uuid #!key levels)
-  (let ((node (get-node uuid)))
-    (vector (tree get-descendants node levels))))
+(define (unnumber var)
+  (let ((svar (->string var)))
+    (string->symbol (substring 
+                     svar 0
+                     (- (string-length svar) 1)))))
 
-(define (reverse-tree uuid #!optional levels)
-  (let ((node (get-node uuid)))
-    (vector (tree get-ancestors node levels #:relation 'parents))))
+(define (properties-variables n)
+  (map (lambda (prop)
+         (sparql-variable 
+          (conc (car prop) n)))
+       *properties*))
 
-;; use (read-request-json) to get post parameters
-(define-rest-call "/hierarchies"
-  (lambda ()
-    `((data 
-       . ,(tree get-descendants (get-top-concept) (str->num ($ 'levels)))))))
+(define (property-query n)
+  (match-lambda 
+    ((name predicate)
+     (let ((var (sparql-variable (conc name n))))
+       (lambda (node)
+         (s-optional
+          (s-filter
+           (s-triple `(,node ,predicate ,var))
+           (lang-or-none-filter var (lang)))))))))
+
+(define (properties-query var n)
+  (map (lambda (pq) (pq var))
+       (map (property-query n)
+            *properties*)))
+
+(define (descendance-query-all-statements parent levels #!optional inverse?)
+  (let loop ((level levels)
+             (vars '())
+             (statements '()))
+    (if (= level 0)
+        (cons vars statements)
+        (let ((uuid (sparql-variable (conc "uuid" (->string (- levels level)))))
+              (node (sparql-variable (conc "child" (->string (- levels level))))))
+          (loop (- level 1)
+                (append vars
+                        (list node uuid)
+                        (properties-variables (- levels level)))
+                (append `(,(if inverse?
+                               `(,(or (car-when vars) parent) skos:broader ,node)
+                               `(,node skos:broader ,(or (car-when vars) parent)))
+                          (,node mu:uuid ,uuid)
+                          ,@(properties-query node level))
+                        statements))))))
+
+(define (nuull? node)
+  (or (null? node) (equal? node '(()))))
+
+(define (gather-nodes-cps key nodes collect cont)
+  (if (nuull? nodes)
+      (cont '())
+      (let* ((node (car nodes))
+	     (val (car node)))
+	(let loop ((accum (list (cdr node)))
+		   (nodes (cdr nodes)))
+	  (cond ((nuull? nodes)
+		 (gather-nodes-cps key accum collect
+				   (lambda (t)
+				     (cont (collect val t)))))
+		((equal? (key (car nodes)) val)
+		 (loop (cons (cdar nodes) accum) (cdr nodes)))
+		(else (gather-nodes-cps key accum collect
+					(lambda (t)
+					  (gather-nodes-cps
+					   key nodes collect
+					   (lambda (u)
+					     (cont (append (collect val t)
+							   u))))))))))))
+
+(define (gather-nodes key nodes #!optional (collect alist-tree-node))
+  (gather-nodes-cps key nodes collect values))
+
+(define (imbricate cs relation)
+  (list->vector
+   (gather-nodes cdar (map (lambda (c) (map cdr c)) cs) (json-node relation))))
+
+(define (json-node relation)
+  (lambda (node tree)
+    (let ((id (alist-ref 'uuid node)))
+      `(((id . ,(->string id))
+         ,@(map (lambda (prop)
+                  (cons prop (alist-ref prop node)))
+                (map car *properties*))
+         ,@(if (null? tree)
+               '()
+               `((relationships
+                  . ((,relation
+                      . ((data . ,(list->vector tree)))))))))))))
+
+(define (alist-tree-node val tree)
+  (list (cons val tree)))
+
+(define (substr-end s #!optional (len 1))
+  (substring s (- (string-length s) len)))
+
+(define (partition-bindings key proc)
+  (lambda (bindings)
+    (let loop ((bindings bindings))
+      (if (null? bindings)
+          '()
+          (let* ((first-binding (car bindings))
+                 (first-var (->string (car first-binding)))
+                 (n (key first-var)))
+            (let-values (((part rest)
+                          (partition (lambda (x)
+                                       (let ((s (->string (car x))))
+                                         (equal? n (key s))))
+                                     bindings)))
+              (append (list
+                       (map (lambda (pair)
+                              (cons (proc (car pair))
+                                    (cdr pair)))
+                            part))
+                      (loop rest))))))))
 
 (define-rest-call ((id) "/hierarchies/:id/descendants")
   (lambda ()
     `((data 
-       . ,(forward-tree id
-                        #:levels (str->num ($ 'levels)))))))
+       . ,(descendance id (str->num (or ($ 'levels) "1"))
+                       'children)))))
 
 (define-rest-call ((id) "/hierarchies/:id/ancestors")
   (lambda ()
-    (reverse-tree 
-     id (str->num ($ 'levels)))))
+    `((data 
+       . ,(descendance id (str->num (or ($ 'levels) "1"))
+                       'ancestors #t)))))
+
+(define-rest-call "/hierarchies"
+  (lambda ()
+    `((data 
+       . ,(descendance (get-top-concept) (str->num (or ($ 'levels) "1"))
+                       'ancestors)))))
+
+;; testing
+
+(define (cs levels) (descendance
+                     "379436c4-08c3-459a-9b75-b094bdfdbaf4"
+                     levels))
