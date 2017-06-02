@@ -1,10 +1,9 @@
-(use awful srfi-69 irregex)
+(use awful srfi-69 irregex matchable)
 
-(load "s-sparql/sparql.scm")
-(load "s-sparql/rest.scm")
-(load "s-sparql/threads.scm")
+(use s-sparql)
+(use s-sparql-rest)
 
-(development-mode? #t)
+(development-mode? #f)
 
 (*print-queries?* #t)
 
@@ -31,29 +30,23 @@
 
 (define (descendance-query vars scheme child parent)
   (select-triples
-   vars
-   (s-triples `((,child skos:inScheme ,scheme)
-                (,child skos:broader ,parent)))))
-
-(define (descendance-query vars scheme child parent)
-  (select-triples
    (cons '?uuid vars)
    (s-triples `((,child skos:inScheme ,scheme)
                 (,child skos:broader ,parent)
                 (,child mu:uuid ?uuid)))))
 
 (define (descendants-query node)
-  (descendance-query '(?x) (scheme) '?x node))
+  (descendance-query '(?node) (scheme) '?node node))
 
 (define (ancestors-query node)
-  (descendance-query '(?x) (scheme) node '?x))
+  (descendance-query '(?node) (scheme) node '?node))
 
 (define (get-node uuid)
   (query-unique-with-vars (node)
      (select-triples
-      '?node
+      '(?node ?uuid)
       (s-triples `((?node mu:uuid ,uuid))))
-     node))
+     (cons uuid node)))
 
 (define (get-top-concept)
   (query-unique-with-vars (node uuid)
@@ -64,11 +57,12 @@
       (cons uuid node)))
          
 (define (get-descendants node)
-  (hit-property-cache node 'descendants
-                      (query-with-vars
-                       (uuid x)
-                       (descendants-query node)
-                       (cons uuid x))))
+  (hit-property-cache 
+   node 'descendants
+   (query-with-vars
+    (uuid node)
+    (descendants-query node)
+    (cons uuid node))))
 
 (define (get-ancestors node)
   (hit-property-cache node 'ancestors
@@ -121,29 +115,12 @@
                                   (next-fn node))))
                    (append `((id . ,uuid)
                              (type . "concept"))
-                           (node-properties node)
+                           (node-properties node) 
                            (if-pair? children
                                      `((relationships 
                                         . ((,relation
                                             . ((data
                                                 . ,(list->vector children)))))))))))))
-
-(define (tree1 next-fn node #!optional levels #!key (relation 'children))
-  (print node)
-  (if (eq? levels 0)
-      (node-properties (cdr node))
-      (let ((children (pmap-batch
-                       100
-                       (lambda (e)
-                         (tree next-fn e (and levels (- levels 1))))
-                       (next-fn (cdr node)))))
-        (if (null? children)
-            (node-properties (cdr node))
-            (append (node-properties (cdr node))
-                    `((relationships 
-                       . ((,relation
-                           . ((data
-                               . ,(list->vector children))))))))))))
 
 (define (forward-tree uuid #!key levels)
   (let ((node (get-node uuid)))
@@ -153,7 +130,8 @@
   (let ((node (get-node uuid)))
     (vector (tree get-ancestors node levels #:relation 'parents))))
 
-(define-rest-call (() "/hierarchies")
+;; use (read-request-json) to get post parameters
+(define-rest-call "/hierarchies"
   (lambda ()
     `((data 
        . ,(tree get-descendants (get-top-concept) (str->num ($ 'levels)))))))
@@ -168,4 +146,3 @@
   (lambda ()
     (reverse-tree 
      id (str->num ($ 'levels)))))
-

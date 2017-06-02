@@ -10,4 +10,4 @@ export INCLUDED_PROPERTIES="name=skos:altLabel,description=skos:prefLabel,notati
 
 export DEFAULT_LANGUAGE=en
 
-csi hierarchy.scm
+csi hierarchy-fast.scm
