@@ -134,21 +134,21 @@
   (if (nuull? nodes)
       (cont '())
       (let* ((node (car nodes))
-	     (val (car node)))
+	     (val (key (car node))))
 	(let loop ((accum (list (cdr node)))
 		   (nodes (cdr nodes)))
 	  (cond ((nuull? nodes)
 		 (gather-nodes-cps key accum collect
 				   (lambda (t)
-				     (cont (collect val t)))))
-		((equal? (key (car nodes)) val)
+				     (cont (collect (car node) t))))) ; val t)))))
+		((equal? (key (caar nodes)) val)
 		 (loop (cons (cdar nodes) accum) (cdr nodes)))
 		(else (gather-nodes-cps key accum collect
 					(lambda (t)
 					  (gather-nodes-cps
 					   key nodes collect
 					   (lambda (u)
-					     (cont (append (collect val t)
+					     (cont (append (collect (car node) t) ;;val t)
 							   u))))))))))))
 
 (define (gather-nodes key nodes #!optional (collect alist-tree-node))
@@ -222,7 +222,7 @@
      (let (($ (request-vars)))
        `((data 
        . ,(descendance (get-top-concept) (str->num (or ($ 'levels) "1"))
-                       'ancestors))))))
+                       'children))))))
 (define descendants
   (rest-call (id)
     (let (($ (request-vars)))
@@ -241,11 +241,17 @@
                . (((/ "hierarchies") . ,hierarchies)
                   ((/ "hierarchies" id "descendants") . ,descendants)
                   ((/ "hierarchies" id "ancestors") . ,ancestors)))))
-;                  ((/ "person" name) . ,person)))))
 
-(start-server port: 4567)
+(print (vhost-map))
 
+(access-log "access.log")
+(error-log "error.log")
+(debug-log "debug.log")
+
+(log-to "debug.log" "~A" (vhost-map))
+
+(start-server port: 4028)
 
 (define (cs levels) (descendance
                      "379436c4-08c3-459a-9b75-b094bdfdbaf4"
-                     levels))
+                     levels 'children))
