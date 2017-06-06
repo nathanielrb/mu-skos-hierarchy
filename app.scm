@@ -160,9 +160,10 @@
   (lambda (node tree)
     (let ((id (alist-ref 'uuid node)))
       `(((id . ,(->string id))
-         ,@(map (lambda (prop)
-                  (cons prop (alist-ref prop node)))
-                (map car *properties*))
+         (attributes
+          ,@(map (lambda (prop)
+                   (cons prop (alist-ref prop node)))
+                 (map car *properties*)))
          ,@(if (null? tree)
                '()
                `((relationships
@@ -240,14 +241,6 @@
                   ((/ "hierarchies") . ,hierarchies)
                   ((/ "hierarchies" id "descendants") . ,descendants)
                   ((/ "hierarchies" id "ancestors") . ,ancestors)))))
-
-(vhost-map `((".*" . ,handle-app) ))
-
-(access-log "access.log")
-(error-log "error.log")
-(debug-log "debug.log")
-
-(start-server port: 4028)
 
 (define (cs levels) (descendance
                      "379436c4-08c3-459a-9b75-b094bdfdbaf4"

@@ -1,3 +1,3 @@
 FROM nathanielrb/mu-chicken-template
-MAINTAINER "nathaniel"
+MAINTAINER "Nathaniel Rudavsky-Brody"
 
