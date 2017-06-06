@@ -230,9 +230,17 @@
          . ,(descendance id (str->num (or ($ 'levels) "1"))
                          'children))))))
 
+(define ancestors
+  (rest-call (id)
+    (let (($ (request-vars)))
+      `((data 
+         . ,(descendance id (str->num (or ($ 'levels) "1"))
+                         'ancestors #t))))))
+
 (*handlers* `((GET 
                . (((/ "hierarchies") . ,hierarchies)
-                  ((/ "hierarchies" id "descendants") . ,descendants)))))
+                  ((/ "hierarchies" id "descendants") . ,descendants)
+                  ((/ "hierarchies" id "ancestors") . ,ancestors)))))
 ;                  ((/ "person" name) . ,person)))))
 
 (start-server port: 4567)
