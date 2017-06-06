@@ -1,3 +1,3 @@
-FROM cat-test
+FROM nathanielrb/mu-chicken-template
 MAINTAINER "nathaniel"
 

@@ -6,8 +6,6 @@
 
 (use s-sparql mu-chicken-support spiffy spiffy-request-vars)
 
-;; (use s-sparql-rest)
-
 (development-mode? #f)
 
 (*print-queries?* #t)
@@ -238,17 +236,16 @@
                          'ancestors #t))))))
 
 (*handlers* `((GET 
-               . (((/ "hierarchies") . ,hierarchies)
+               . (((/ "test") . ,(lambda (b) `((status . "success"))))
+                  ((/ "hierarchies") . ,hierarchies)
                   ((/ "hierarchies" id "descendants") . ,descendants)
                   ((/ "hierarchies" id "ancestors") . ,ancestors)))))
 
-(print (vhost-map))
+(vhost-map `((".*" . ,handle-app) ))
 
 (access-log "access.log")
 (error-log "error.log")
 (debug-log "debug.log")
-
-(log-to "debug.log" "~A" (vhost-map))
 
 (start-server port: 4028)
 
