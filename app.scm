@@ -4,8 +4,9 @@
 ;(load "s-sparql/rest.scm")
 ; (load "s-sparql/threads.scm")
 
-(use s-sparql)
-(use s-sparql-rest)
+(use s-sparql mu-chicken-support spiffy spiffy-request-vars)
+
+;; (use s-sparql-rest)
 
 (development-mode? #f)
 
@@ -196,25 +197,46 @@
                             part))
                       (loop rest))))))))
 
-(define-rest-call ((id) "/hierarchies/:id/descendants")
-  (lambda ()
-    `((data 
-       . ,(descendance id (str->num (or ($ 'levels) "1"))
-                       'children)))))
+;; (define-rest-call ((id) "/hierarchies/:id/descendants")
+;;   (lambda ()
+;;     `((data 
+;;       . ,(descendance id (str->num (or ($ 'levels) "1"))
+;;                       'children)))))
 
-(define-rest-call ((id) "/hierarchies/:id/ancestors")
-  (lambda ()
-    `((data 
-       . ,(descendance id (str->num (or ($ 'levels) "1"))
-                       'ancestors #t)))))
+;; (define-rest-call ((id) "/hierarchies/:id/ancestors")
+;;   (lambda ()
+;;     `((data 
+;;       . ,(descendance id (str->num (or ($ 'levels) "1"))
+;;                       'ancestors #t)))))
 
-(define-rest-call "/hierarchies"
-  (lambda ()
-    `((data 
-       . ,(descendance (get-top-concept) (str->num (or ($ 'levels) "1"))
-                       'ancestors)))))
+;; (define-rest-call "/hierarchies"
+;;   (lambda ()
+;;     `((data 
+;;       . ,(descendance (get-top-concept) (str->num (or ($ 'levels) "1"))
+;;                       'ancestors)))))
 
 ;; testing
+
+(define hierarchies
+   (rest-call ()
+     (let (($ (request-vars)))
+       `((data 
+       . ,(descendance (get-top-concept) (str->num (or ($ 'levels) "1"))
+                       'ancestors))))))
+(define descendants
+  (rest-call (id)
+    (let (($ (request-vars)))
+      `((data 
+         . ,(descendance id (str->num (or ($ 'levels) "1"))
+                         'children))))))
+
+(*handlers* `((GET 
+               . (((/ "hierarchies") . ,hierarchies)
+                  ((/ "hierarchies" id "descendants") . ,descendants)))))
+;                  ((/ "person" name) . ,person)))))
+
+(start-server port: 4567)
+
 
 (define (cs levels) (descendance
                      "379436c4-08c3-459a-9b75-b094bdfdbaf4"
