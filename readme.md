@@ -8,7 +8,7 @@ Gets a Skos concept tree in JSON-API or JSON-LD format.
 
 Returns all Skos concept schemes in the database.
 
-Optional parameters: `format` ("json-api" or "json-ld", defaults to "json-api")
+Optional parameter: `format` ("json-api" or "json-ld", defaults to "json-api")
 
 ### GET /schemes/:scheme-id
 
@@ -20,7 +20,7 @@ Optional parameter: `format`
 
 Returns the descending hierarchy from the concept with mu:uuid `concept-id`, or the first top concept, if `concept-id` is `_top`. (`scheme-id` can also be "_default".)
 
-Optional parameters: `levels` (defaults to 1), `lang` (language tag for optional included properties, defaults to "en"), `format`
+Optional parameters: `levels` (defaults to 1), `lang` (language tag for optional included properties, defaults to DEFAULT_LANG), `format`
 
 ### GET /schemes/:scheme-id/:concept-id/ancestors
 
@@ -28,6 +28,13 @@ Returns the ascending hierarchy from the concept with mu:uuid `concept-id`, or t
 
 Optional parameters: `levels` (defaults to 1), `lang`, `format`
 
+## Example
+
+When the default concept scheme is specified in the configuration (see below) and contains only one top concept (skos:TopConcept), then this call will return the hierarchy to 5 levels:
+
+```
+/schemes/_default/_top?levels=5
+```
 
 ## Running
 
@@ -35,21 +42,37 @@ Optional parameters: `levels` (defaults to 1), `lang`, `format`
 
 **required** MU_DEFAULT_GRAPH
 
-**required** SPARQL_ENDPOINT
+The default graph.
 
-**optional** CONCEPT_SCHEME: default Skos concept scheme
+**required** MU_SPARQL_ENDPOINT
 
-**optional** INCLUDED_PROPERTIES: comma separated list of labels and predicates for propertiers to be included in results, as in:
+The SPARQL endpoint.
+
+**optional** CONCEPT_SCHEME
+
+The default Skos concept scheme.
+
+**optional** INCLUDED_PROPERTIES
+
+A comma-separated list of properties in the form "label=predicate" to be included in results, as in:
 
 ```
 description=skos:prefLabel,notation=skos:notation,name=app:name
 ```
 
-**optional** DEFAULT_LANGUAGE: for language-tagged included properties
+Note that if INCLUDED_PROPERTIES are specified, only nodes with those properties will be returned.
 
-**optional** NAMESPACES: namespace definitions for use in INCLUDED_PROPERTIES
+**optional** DEFAULT_LANGUAGE
 
-### Running in docker-compose
+Default language included properties with language tags, defaults to "en".
+
+**optional** MU_NAMESPACES
+
+A comma-separated list of amespace definitions for use in INCLUDED_PROPERTIES, in the form ``prefix: <uri>`.
+
+### Running in Docker
+
+In the docker-compose file:
 
 ```
 services:
@@ -60,13 +83,25 @@ services:
       MU_SPARQL_ENDPOINT: "http://db:8890/sparql"
       CONCEPT_SCHEME: "http://data.europa.eu/eurostat/id/taxonomy/ECOICOP"
       INCLUDED_PROPERTIES: "description=skos:prefLabel,notation=skos:notation,name=app:name"
-      NAMESPACES: "mu: <http://mu.semte.ch/vocabularies/core>,app: <http://mu.semte.ch/application>"
-      DEFAULT_LANGUAGE: en
+      MU_NAMESPACES: "mu: <http://mu.semte.ch/vocabularies/core>,app: <http://mu.semte.ch/application>"
     ports:
       - "4028:4028"
     links:
       - db:database
   ...
+```
+
+or directly:
+
+```
+docker run -d \
+  -p 4028:4028 \
+  -e  MU_DEFAULT_GRAPH="http://data.europa.eu/eurostat/ECOICOP"\
+  -e  MU_SPARQL_ENDPOINT="http://127.0.0.1:8890/sparql"\
+  -e  CONCEPT_SCHEME="http://data.europa.eu/eurostat/id/taxonomy/ECOICOP"\
+  -e  INCLUDED_PROPERTIES="description=skos:prefLabel,notation=skos:notation,name=app:name"\
+  -e  MU_NAMESPACES="mu: <http://mu.semte.ch/vocabularies/core>,app: <http://mu.semte.ch/application>"\
+  nathanielrb/mu-skos-hierarchy
 ```
 
 ### Running natively
@@ -95,6 +130,13 @@ and the following non-distributed Eggs:
 
 (download, and run ```sudo chicken-install``` in each directory).
 
+Then the service can be run after exporting the environment variables:
+
+```
+export MU_DEFAULT_GRAPH="http://data.europa.eu/eurostat/ECOICOP"
+export MU_SPARQL_ENDPOINT="http://127.0.0.1:8890/sparql"
+csi app.scm
+```
 
 ## To Do
 
