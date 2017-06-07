@@ -320,10 +320,3 @@
               (GET ("schemes" scheme-id) ,top-concepts)
               (GET ("schemes" scheme-id id "descendants") ,descendants)
               (GET ("schemes" scheme-id id "ancestors") ,ancestors)))
-
-;; for testing
-
-(define (cs levels) (descendance
-                     "379436c4-08c3-459a-9b75-b094bdfdbaf4"
-                     levels 'children))
-
