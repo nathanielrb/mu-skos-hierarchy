@@ -1,3 +1,0 @@
-[submodule "s-sparql"]
-	path = s-sparql
-	url = git@github.com:nathanielrb/s-sparql.git
