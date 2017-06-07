@@ -1,6 +1,6 @@
 # mu-skos-hierarchy
 
-Gets a Skos concept tree in JSON-API or JSON-LD format.
+Gets a Skos concept tree in JSON-API or JSON-LD format, as defined by `skos:broader` links and `skos:TopConcept`.
 
 ## API
 
@@ -30,7 +30,7 @@ Optional parameters: `levels` (defaults to 1), `lang`, `format`
 
 ## Example
 
-When the default concept scheme is specified in the configuration (see below) and contains only one top concept (skos:TopConcept), then this call will return the hierarchy to 5 levels:
+When the default concept scheme is specified in the configuration (see below) and contains only one top concept, then this call will return the hierarchy to 5 levels:
 
 ```
 /schemes/_default/_top?levels=5
