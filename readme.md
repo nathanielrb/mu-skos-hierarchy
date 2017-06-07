@@ -10,21 +10,21 @@ Returns all Skos concept schemes in the database.
 
 Optional parameters: `format` ("json-api" or "json-ld", defaults to "json-api")
 
-### GET /schemes/<scheme-id>
+### GET /schemes/:scheme-id
 
-Returns all top concepts in the scheme with mu:uuid `scheme-id`, or in  the default CONCEPT_SCHEME, if <scheme-id> is `_default`
+Returns all top concepts in the scheme with mu:uuid `scheme-id`, or in  the default CONCEPT_SCHEME, if `scheme-id` is `_default`
 
 Optional parameter: `format`
 
-### GET /schemes/<scheme-id>/<concept-id>/descendants
+### GET /schemes/:scheme-id/:concept-id/descendants
 
-Returns the descending hierarchy from the concept with mu:uuid <concept-id>, or the first top concept, if <concept-id> is `_top`
+Returns the descending hierarchy from the concept with mu:uuid `concept-id`, or the first top concept, if `concept-id` is `_top`. (`scheme-id` can also be "_default".)
 
 Optional parameters: `levels` (defaults to 1), `lang` (language tag for optional included properties, defaults to "en"), `format`
 
-### GET /schemes/<scheme-id>/<concept-id>/ancestors
+### GET /schemes/:scheme-id/:concept-id/ancestors
 
-Returns the ascending hierarchy from the concept with mu:uuid <concept-id>, or the first top concept, if <concept-id> is `_top`
+Returns the ascending hierarchy from the concept with mu:uuid `concept-id`, or the first top concept, if `concept-id` is `_top`
 
 Optional parameters: `levels` (defaults to 1), `lang`, `format`
 
