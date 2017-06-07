@@ -1,6 +1,0 @@
-* To Do
-
-** Threads
-
-*** TODO still getting "too many open files" for 5000+ connections with pmap-pool
-*** TODO pmap-pool without "apply" for long lists
