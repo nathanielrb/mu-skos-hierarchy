@@ -287,10 +287,10 @@
       id))
 
 (define (context)
-  (append `((concept . ,(expand-namespace 'skos:Concept))
-            (concept-scheme . ,(expand-namespace 'skos:ConceptScheme)))
+  (append `((concept . ,(write-expand-namespace 'skos:Concept))
+            (concept-scheme . ,(write-expand-namespace 'skos:ConceptScheme)))
           (map (match-lambda ((prop-name prop)
-                              (cons prop-name (expand-namespace prop))))
+                              (cons prop-name (write-expand-namespace prop))))
                (*properties*))))
 
 (define (format-constructor)
@@ -316,7 +316,7 @@
                 (@type . "concept")
                 (,relation . ,descs)
                 (@context  . ,(append
-                               `((,relation . ,(expand-namespace 'skos:broader)))
+                               `((,relation . ,(write-expand-namespace 'skos:broader)))
                                (context))))))))))
 
 (define descendants-call (descendance-call 'children #f))

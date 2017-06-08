@@ -24,7 +24,7 @@ Optional parameter: `format`.
 
 Returns the descending hierarchy from the concept with mu:uuid `concept-id`, or the first top concept, if `concept-id` is "_top". (`scheme-id` can also be "_default", as above.)
 
-Optional parameters: `levels` (defaults to 1), `lang` (language tag for optional included properties, defaults to DEFAULT_LANG), `properties` (a comma-separated list of properties in the form "label=predicate" to be included in results, overrides INCLUDED_PROPERTIES), `format`.
+Optional parameters: `levels` (defaults to 1), `lang` (language tag for optional included properties, defaults to DEFAULT_LANG), `properties` (a comma-separated list of properties in the form "label=predicate" to be included in results, where predicate is an <iri> or namespace:pred; overrides INCLUDED_PROPERTIES), `format`.
 
 ### GET /schemes/:scheme-id/:concept-id/ancestors
 
@@ -61,7 +61,7 @@ The default Skos concept scheme, must be specified for requests `/schemes/_defau
 A comma-separated list of properties in the form "label=predicate" to be included in results, as in:
 
 ```
-description=skos:prefLabel,notation=skos:notation,name=app:name
+description=skos:prefLabel,notation=skos:notation,name=<http://mu.semte.ch/application/name>
 ```
 
 Note that if INCLUDED_PROPERTIES are specified, only nodes with those properties will be returned. Can be overrided per request.
@@ -72,7 +72,7 @@ Default language included properties with language tags, defaults to "en".
 
 **MU_NAMESPACES**
 
-A comma-separated list of namespace definitions for use in INCLUDED_PROPERTIES, in the form ``prefix: <uri>`.
+A comma-separated list of namespace definitions for use in INCLUDED_PROPERTIES, in the form `prefix: <uri>`.
 
 ### Running in Docker
 
@@ -142,9 +142,12 @@ export MU_SPARQL_ENDPOINT="http://127.0.0.1:8890/sparql"
 csi app.scm
 ```
 
+## Limitations
+
+Currently breaks on 7+ levels on Virtuoso, because of estimated query time.
+
 ## To Do
 
 - move configuration (esp. included properties) to config file
-- allow POST calls with node URI instead of mu:uuids
-- improve speed
+- allow POST calls with node URI instead of mu:uuids??
 - allow included links as well as properties??
