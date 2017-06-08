@@ -1,4 +1,4 @@
-(use spiffy spiffy-request-vars srfi-69 matchable)
+(use spiffy spiffy-request-vars srfi-69 matchable irregex)
 
 (use s-sparql mu-chicken-support)
 
@@ -11,7 +11,7 @@
    (or (get-environment-variable "DEFAULT_LANGUAGE")
        "en")))
 
-(define *data-format*
+(define *format*
   (make-parameter
    (or (get-environment-variable "DATA_FORMAT")
        "json-api")))
@@ -25,10 +25,14 @@
   (or (get-environment-variable "INCLUDED_PROPERTIES")
       ""))
 
-(define *properties*
+(define (split-properties property-definitions)
   (map (lambda (str) 
          (map string->symbol (string-split str "="))) 
-       (string-split *property-definitions* ",")))
+       (string-split property-definitions ",")))
+
+(define *properties*
+  (make-parameter
+   (split-properties *property-definitions*)))
 
 (define *cache* (make-hash-table))
 
@@ -66,7 +70,7 @@
 (define (node-properties node)
   (hit-property-cache 
    node 'properties
-   (if-pair? *properties*
+   (if-pair? (*properties*)
              (let ((properties (properties-query node)))
                properties))))
 
@@ -74,7 +78,7 @@
   (map (lambda (prop)
          (sparql-variable 
           (conc (car prop) n)))
-       *properties*))
+       (*properties*)))
 
 ;; currently not OPTIONAL to avoid Virtuoso errors
 (define (property-query n)
@@ -89,7 +93,7 @@
 (define (properties-query var n)
   (map (lambda (pq) (pq var))
        (map (property-query n)
-            *properties*)))
+            (*properties*))))
 
 (define (descendance-query-all-statements top-parent levels #!optional inverse?)
   (let loop ((level levels)
@@ -149,7 +153,6 @@
 
 (define (imbricate cs constructor relation)
   (list->vector
-   ;; (gather-nodes cdar (map (lambda (c) (map cdr c)) cs) (json-node relation))))
    (gather-nodes cdadr cs (constructor relation))))
 
 (define (partition-bindings key proc)
@@ -174,39 +177,43 @@
 
 (define (unnumber var)
   (let ((svar (->string var)))
-    (string->symbol (substring 
-                     svar 0
-                     (- (string-length svar) 1)))))
+    (string->symbol (irregex-replace "[0-9]+$" svar ""))))
 
 (define (substr-end s #!optional (len 1))
   (substring s (- (string-length s) len)))
 
-(define (descendance scheme parent-uuid levels constructor relation #!optional inverse?)
-  (match-let (((vars order-by statements) 
-               (descendance-query-all-statements '?parent levels inverse?)))
-    (print "VARS: " vars)
-    (let ((results
-           (sparql/select
-            (select-triples
-             vars
-             (s-triples
-              `((?parent mu:uuid ,parent-uuid)
-                ,@statements))
-             order-by: (string-join order-by " ")))))
-      (imbricate (map (partition-bindings substr-end unnumber) results) 
-                 constructor
-                 relation))))
+(define (descendance-query scheme parent-uuid levels inverse?)
+  (hit-hashed-cache
+   *cache* (list 'Query scheme parent-uuid levels (*properties*))
+   (match-let (((vars order-by statements) 
+                (descendance-query-all-statements '?parent levels inverse?)))
+     (sparql/select
+      (select-triples
+       vars
+       (s-triples
+        `((?parent mu:uuid ,parent-uuid)
+          ,@statements))
+       order-by: (string-join order-by " "))))))
+
+(define (descendance scheme parent-uuid levels relation #!optional inverse?)
+  (hit-hashed-cache
+   *cache* (list 'Results scheme parent-uuid (*format*) levels (*properties*))
+   (let ((results (descendance-query scheme parent-uuid levels inverse?)))
+     (imbricate (map (partition-bindings substr-end unnumber) results) 
+                (format-constructor)
+                relation))))
 
 (define (json-api relation)
   (lambda (node tree)
     (let ((id (alist-ref 'uuid node)))
       `(((id . ,(->string id))
          (type . "concept")
-         (attributes
-          (@id . ,(write-uri (alist-ref 'child node)))
-          ,@(map (lambda (prop)
-                   (cons prop (alist-ref prop node)))
-                 (map car *properties*)))
+         ,@(if (null? (*properties*))
+               '()
+               `((attributes
+                 ,@(map (lambda (prop)
+                          (cons prop (alist-ref prop node)))
+                        (map car (*properties*))))))
          ,@(if (null? tree)
                '()
                `((relationships
@@ -220,16 +227,15 @@
          (@type . "concept")
          ,@(map (lambda (prop)
                   (cons prop (alist-ref prop node)))
-                (map car *properties*))
+                (map car (*properties*)))
          ,@(if (null? tree)
                '()
                `((,relation
                  . ,(list->vector tree)))))))))
 
-(define concept-schemes
+(define concept-schemes-call
    (rest-call ()
-     (let* (($ (request-vars))
-            (format (or ($ 'format) (*data-format*)))
+     (let* ((format (or ((request-vars) 'format) (*format*)))
             (concept-schemes (get-concept-schemes)))
        (if (equal? format "json-api")
            `((data 
@@ -244,26 +250,27 @@
                                 `((@id . ,(write-uri node))
                                   (type . "concept-scheme")
                                   (@context . ,(context)))))
-                 concept-schemes))))))                                  
+                 concept-schemes))))))
 
 (define (scheme-or-default scheme-id)
   (if (equal? scheme-id "_default")
       (*scheme*)
       (get-node scheme-id)))
 
-(define top-concepts
+(define top-concepts-call
    (rest-call (scheme-id)
-     (let* (($ (request-vars))
-           (format (or ($ 'format) (*data-format*)))
-           (scheme (scheme-or-default scheme-id))
-           (top-concepts (get-top-concepts scheme)))
+     (let* ((scheme (scheme-or-default scheme-id))
+            (top-concepts (get-top-concepts scheme))
+            (format (or ((request-vars) 'format) (*format*))))
        (if (equal? format "json-api")
            `((data 
               . ,(list->vector
                   (map (match-lambda ((id . node)
                                       `((id . ,id)
                                         (type . "concept")
-                                        (links . ((self . ,(conc "/schemes/" scheme-id "/" id)))))))
+                                        (links
+                                         . ((self
+                                             . ,(conc "/schemes/" scheme-id "/" id)))))))
                        top-concepts))))
            `((@id . ,(write-uri scheme))
              (@type . "concept-scheme")
@@ -284,39 +291,40 @@
             (concept-scheme . ,(expand-namespace 'skos:ConceptScheme)))
           (map (match-lambda ((prop-name prop)
                               (cons prop-name (expand-namespace prop))))
-               *properties*)))
+               (*properties*))))
 
-(define (format-constructor format)
-  (if (equal? format "json-api")
+(define (format-constructor)
+  (if (equal? (*format*) "json-api")
       json-api
       json-ld))
 
+(define (request-properties)
+  (let ((pds ((request-vars) 'properties)))
+    (and pds (split-properties pds))))
+
 (define (descendance-call relation inverse?)
   (rest-call (scheme-id id)
-    (let* (($ (request-vars))
-           (format (or ($ 'format) (*data-format*)))
-           (constructor (format-constructor format))
-           (scheme (scheme-or-default scheme-id))
-           (id (concept-or-top scheme id)))
-      (let ((descs (hit-hashed-cache
-                    *cache* (list scheme id format ($ 'levels))
-                    (descendance scheme id (str->num (or ($ 'levels) "1"))
-                                 constructor relation))))
-        (if (equal? format "json-api")
-            `((data . ,descs))
-            `((@id . ,id)
-              (@type . "concept")
-              (,relation . ,descs)
-              (@context  . ,(append
-                              `((,relation . ,(expand-namespace 'skos:broader)))
-                              (context)))))))))
+    (let* ((scheme (scheme-or-default scheme-id))
+           (id (concept-or-top scheme id))
+           (levels (string->number (or ((request-vars) 'levels) "1"))))
+      (parameterize ((*properties* (or (request-properties) (*properties*)))
+                     (*format* (or ((request-vars) 'format) (*format*))))
+        (let ((descs (descendance scheme id levels relation)))
+          (if (equal? (*format*) "json-api")
+              `((data . ,descs))
+              `((@id . ,id)
+                (@type . "concept")
+                (,relation . ,descs)
+                (@context  . ,(append
+                               `((,relation . ,(expand-namespace 'skos:broader)))
+                               (context))))))))))
 
-(define descendants (descendance-call 'children #f))
+(define descendants-call (descendance-call 'children #f))
 
-(define ancestors (descendance-call 'ancestors #t))
+(define ancestors-call (descendance-call 'ancestors #t))
 
 (*handlers* `((GET ("test") ,(lambda (b) `((status . "success"))))
-              (GET ("schemes") ,concept-schemes)
-              (GET ("schemes" scheme-id) ,top-concepts)
-              (GET ("schemes" scheme-id id "descendants") ,descendants)
-              (GET ("schemes" scheme-id id "ancestors") ,ancestors)))
+              (GET ("schemes") ,concept-schemes-call)
+              (GET ("schemes" scheme-id) ,top-concepts-call)
+              (GET ("schemes" scheme-id id "descendants") ,descendants-call)
+              (GET ("schemes" scheme-id id "ancestors") ,ancestors-call)))

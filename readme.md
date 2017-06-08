@@ -1,6 +1,10 @@
 # mu-skos-hierarchy
 
-Gets a Skos concept tree in JSON-API or JSON-LD format, as defined by `skos:broader` links and `skos:TopConcept`.
+Gets a Skos concept hierarchy tree in JSON-API or JSON-LD format, as defined by `skos:broader` links and `skos:TopConcept`.
+
+Additional properties can be included with the results, as defined in the configuration or specified in individual requests.
+
+Results and SPARQL queries are cached for faster responses.
 
 ## API
 
@@ -18,15 +22,15 @@ Optional parameter: `format`.
 
 ### GET /schemes/:scheme-id/:concept-id/descendants
 
-Returns the descending hierarchy from the concept with mu:uuid `concept-id`, or the first top concept, if `concept-id` is "_top". (`scheme-id` can also be "_default".)
+Returns the descending hierarchy from the concept with mu:uuid `concept-id`, or the first top concept, if `concept-id` is "_top". (`scheme-id` can also be "_default", as above.)
 
-Optional parameters: `levels` (defaults to 1), `lang` (language tag for optional included properties, defaults to DEFAULT_LANG), `format`.
+Optional parameters: `levels` (defaults to 1), `lang` (language tag for optional included properties, defaults to DEFAULT_LANG), `properties` (a comma-separated list of properties in the form "label=predicate" to be included in results, overrides INCLUDED_PROPERTIES), `format`.
 
 ### GET /schemes/:scheme-id/:concept-id/ancestors
 
-Returns the ascending hierarchy from the concept with mu:uuid `concept-id`, or the first top concept, if `concept-id` is "_top".
+Returns the ascending hierarchy from the concept with mu:uuid `concept-id`, or the first top concept returned by the database, if `concept-id` is "_top".
 
-Optional parameters: `levels` (defaults to 1), `lang`, `format`.
+Optional parameters: `levels` (defaults to 1), `lang`, `properties`, `format`.
 
 ## Example
 
@@ -40,19 +44,19 @@ When the default concept scheme is specified in the configuration (see below) an
 
 ### Environment Variables
 
-**required** MU_DEFAULT_GRAPH
+**MU_DEFAULT_GRAPH**
 
-The default graph.
+The graph, defaults to http://mu.semte.ch/application
 
-**required** MU_SPARQL_ENDPOINT
+**MU_SPARQL_ENDPOINT**
 
-The SPARQL endpoint.
+The SPARQL endpoint, defaults to http://127.0.0.1:8890/sparql
 
-**optional** CONCEPT_SCHEME
+**CONCEPT_SCHEME**
 
-The default Skos concept scheme.
+The default Skos concept scheme, must be specified for requests `/schemes/_default`
 
-**optional** INCLUDED_PROPERTIES
+**INCLUDED_PROPERTIES**
 
 A comma-separated list of properties in the form "label=predicate" to be included in results, as in:
 
@@ -60,15 +64,15 @@ A comma-separated list of properties in the form "label=predicate" to be include
 description=skos:prefLabel,notation=skos:notation,name=app:name
 ```
 
-Note that if INCLUDED_PROPERTIES are specified, only nodes with those properties will be returned.
+Note that if INCLUDED_PROPERTIES are specified, only nodes with those properties will be returned. Can be overrided per request.
 
-**optional** DEFAULT_LANGUAGE
+**DEFAULT_LANGUAGE**
 
 Default language included properties with language tags, defaults to "en".
 
-**optional** MU_NAMESPACES
+**MU_NAMESPACES**
 
-A comma-separated list of amespace definitions for use in INCLUDED_PROPERTIES, in the form ``prefix: <uri>`.
+A comma-separated list of namespace definitions for use in INCLUDED_PROPERTIES, in the form ``prefix: <uri>`.
 
 ### Running in Docker
 
@@ -80,12 +84,12 @@ services:
     image: nathanielrb/mu-skos-hierarchy
     environment:
       MU_DEFAULT_GRAPH: "http://data.europa.eu/eurostat/ECOICOP"
-      MU_SPARQL_ENDPOINT: "http://db:8890/sparql"
+      MU_SPARQL_ENDPOINT: "http://database:8890/sparql"
       CONCEPT_SCHEME: "http://data.europa.eu/eurostat/id/taxonomy/ECOICOP"
       INCLUDED_PROPERTIES: "description=skos:prefLabel,notation=skos:notation,name=app:name"
       MU_NAMESPACES: "mu: <http://mu.semte.ch/vocabularies/core>,app: <http://mu.semte.ch/application>"
     ports:
-      - "4028:4028"
+      - "4028:80"
     links:
       - db:database
   ...
