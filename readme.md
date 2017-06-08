@@ -81,7 +81,7 @@ Defaults to "skos:ConceptScheme"
 **CONCEPT_TYPE**
 
 Defaults to "skos:Concept
-"
+
 **TOP_CONCEPT_PREDICATE**
 
 Defaults to "skos:topConceptOf"
