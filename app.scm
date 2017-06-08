@@ -4,8 +4,6 @@
 
 (*print-queries?* #t)
 
-(define-namespace skos "http://www.w3.org/2004/02/skos/core#")
-
 (define *lang*
   (make-parameter
    (or (get-environment-variable "DEFAULT_LANGUAGE")
@@ -62,7 +60,7 @@
 
 (define (get-top-concepts scheme)
   (query-with-vars (node uuid)
-     (select-triples
+     (s-select
       '(?uuid ?node)
       (s-triples `((?node ,(*top-concept-predicate*) ,scheme)
                    (?node mu:uuid ?uuid))))
@@ -70,7 +68,7 @@
 
 (define (get-concept-schemes)
   (query-with-vars (node uuid)
-    (select-triples
+    (s-select
      '(?uuid ?node)
      (s-triples `((?node a ,(*concept-scheme-type*))
                   (?node mu:uuid ?uuid))))
@@ -82,7 +80,7 @@
 
 (define (get-node uuid)
   (query-unique-with-vars (node)
-     (select-triples
+     (s-select
       '?node
       (s-triples `((?node mu:uuid ,uuid))))
      node))
@@ -212,7 +210,7 @@
    (match-let (((vars order-by statements) 
                 (descendance-query-all-statements '?parent levels inverse?)))
      (sparql/select
-      (select-triples
+      (s-select
        vars
        (s-triples
         `((?parent mu:uuid ,parent-uuid)
