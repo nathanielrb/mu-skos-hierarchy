@@ -74,6 +74,22 @@ Default language included properties with language tags, defaults to "en".
 
 A comma-separated list of namespace definitions for use in INCLUDED_PROPERTIES, in the form `prefix: <uri>`.
 
+**CONCEPT_SCHEME_TYPE**
+
+Defaults to "skos:ConceptScheme"
+
+**CONCEPT_TYPE**
+
+Defaults to "skos:Concept
+"
+**TOP_CONCEPT_PREDICATE**
+
+Defaults to "skos:topConceptOf"
+
+**BROADER_PREDICATE**
+
+Defaults to "skos:broader"
+
 ### Running in Docker
 
 In the docker-compose file:

@@ -25,6 +25,30 @@
   (or (get-environment-variable "INCLUDED_PROPERTIES")
       ""))
 
+(define *concept-scheme-type*
+  (make-parameter
+   (read-uri
+    (or (get-environment-variable "CONCEPT_SCHEME_TYPE")
+        "skos:ConceptScheme"))))
+
+(define *concept-type*
+  (make-parameter
+   (read-uri
+    (or (get-environment-variable "CONCEPT_TYPE")
+        "skos:Concept"))))
+
+(define *top-concept-predicate*
+  (make-parameter
+   (read-uri
+    (or (get-environment-variable "TOP_CONCEPT_PREDICATE")
+        "skos:topConceptOf"))))
+
+(define *broader-predicate*
+  (make-parameter
+   (read-uri
+    (or (get-environment-variable "BROADER_PREDICATE")
+        "skos:broader"))))
+
 (define (split-properties property-definitions)
   (map (lambda (str) 
          (map string->symbol (string-split str "="))) 
@@ -40,7 +64,7 @@
   (query-with-vars (node uuid)
      (select-triples
       '(?uuid ?node)
-      (s-triples `((?node skos:topConceptOf ,scheme)
+      (s-triples `((?node ,(*top-concept-predicate*) ,scheme)
                    (?node mu:uuid ?uuid))))
      (cons uuid node)))
 
@@ -48,7 +72,7 @@
   (query-with-vars (node uuid)
     (select-triples
      '(?uuid ?node)
-     (s-triples `((?node a skos:ConceptScheme)
+     (s-triples `((?node a ,(*concept-scheme-type*))
                   (?node mu:uuid ?uuid))))
      (cons uuid node)))
 
@@ -108,8 +132,8 @@
                            top-parent
                            (sparql-variable (conc "child" (->string (- level 1))))))
                (new-statements `(,(if inverse?
-                                      `(,parent  skos:broader ,node)
-                                      `(,node skos:broader ,parent))
+                                      `(,parent  ,(*broader-predicate*) ,node) ;skos:broader
+                                      `(,node ,(*broader-predicate*) ,parent))
                                  (,node mu:uuid ,uuid)
                                  ,@(properties-query node level))))
           (loop (- level 1)
@@ -245,12 +269,13 @@
                                         (type . "concept-scheme")
                                         (links . ((self . ,(conc "/schemes/" id)))))))
                        concept-schemes))))
-           (list->vector
-            (map (match-lambda ((id . node)
-                                `((@id . ,(write-uri node))
-                                  (type . "concept-scheme")
-                                  (@context . ,(context)))))
-                 concept-schemes))))))
+           `((concept-scheme
+              . ,(list->vector
+                 (map (match-lambda ((id . node)
+                                     `((@id . ,(write-uri node))
+                                       (type . "concept-scheme"))))
+                      concept-schemes)))
+             (@context . ,(context)))))))
 
 (define (scheme-or-default scheme-id)
   (if (equal? scheme-id "_default")
@@ -287,8 +312,8 @@
       id))
 
 (define (context)
-  (append `((concept . ,(write-expand-namespace 'skos:Concept))
-            (concept-scheme . ,(write-expand-namespace 'skos:ConceptScheme)))
+  (append `((concept . ,(write-expand-namespace (*concept-type*)))
+            (concept-scheme . ,(write-expand-namespace (*concept-scheme-type*)))) 
           (map (match-lambda ((prop-name prop)
                               (cons prop-name (write-expand-namespace prop))))
                (*properties*))))
@@ -316,7 +341,7 @@
                 (@type . "concept")
                 (,relation . ,descs)
                 (@context  . ,(append
-                               `((,relation . ,(write-expand-namespace 'skos:broader)))
+                               `((,relation . ,(write-expand-namespace ,(*broader-predicate*))))
                                (context))))))))))
 
 (define descendants-call (descendance-call 'children #f))
