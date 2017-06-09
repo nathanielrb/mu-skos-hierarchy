@@ -1,6 +1,8 @@
 # mu-skos-hierarchy
 
-Gets a Skos concept hierarchy tree in JSON-API or JSON-LD format, as defined by `skos:broader` links and `skos:TopConcept`.
+Gets a Skos concept hierarchy tree in JSON-API or JSON-LD format.
+
+By default, it gets the hierarchy defined by `skos:broader` links and `skos:TopConcept`, but these are configurable.
 
 Additional properties can be included with the results, as defined in the configuration or specified in individual requests.
 
@@ -16,13 +18,13 @@ Optional parameter: `format` ("json-api" or "json-ld", defaults to "json-api").
 
 ### GET /schemes/:scheme-id
 
-Returns all top concepts in the scheme with mu:uuid `scheme-id`, or in  the default CONCEPT_SCHEME, if `scheme-id` is "_default".
+Returns all top concepts in the scheme with mu:uuid `scheme-id`, or in  the default CONCEPT_SCHEME, if `scheme-id` is "_default". Returns an error if "_default" is used and no default concept scheme is defined.
 
 Optional parameter: `format`.
 
 ### GET /schemes/:scheme-id/:concept-id/descendants
 
-Returns the descending hierarchy from the concept with mu:uuid `concept-id`, or the first top concept, if `concept-id` is "_top". (`scheme-id` can also be "_default", as above.)
+Returns the descending hierarchy from the concept with mu:uuid `concept-id`, or the first top concept, if `concept-id` is "_top". (`scheme-id` can be "_default", as above, or "_all", in which case no scheme restriction is made.)
 
 Optional parameters: `levels` (defaults to 1), `lang` (language tag for optional included properties, defaults to DEFAULT_LANG), `properties` (a comma-separated list of properties in the form "label=predicate" to be included in results, where predicate is an <iri> or namespace:pred; overrides INCLUDED_PROPERTIES), `format`.
 
@@ -89,6 +91,10 @@ Defaults to "skos:topConceptOf"
 **BROADER_PREDICATE**
 
 Defaults to "skos:broader"
+
+**BATCH_LEVELS**
+
+Number of levels to get in a single request; defaults to 6. This may need to be adjusted to avoid database errors because of estimated query time.
 
 ### Running in Docker
 
@@ -157,10 +163,6 @@ export MU_DEFAULT_GRAPH="http://data.europa.eu/eurostat/ECOICOP"
 export MU_SPARQL_ENDPOINT="http://127.0.0.1:8890/sparql"
 csi app.scm
 ```
-
-## Limitations
-
-Currently breaks on 7+ levels on Virtuoso, because of estimated query time.
 
 ## To Do
 

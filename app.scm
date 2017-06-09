@@ -70,13 +70,6 @@
       (s-triples `((?node mu:uuid ,uuid))))
      node))
 
-(define (node-properties node)
-  (hit-property-cache 
-   node 'properties
-   (if-pair? (*properties*)
-             (let ((properties (properties-query node)))
-               properties))))
-
 (define (properties-variables n)
   (map (lambda (prop)
          (sparql-variable 
@@ -144,7 +137,7 @@
 (define (nuull? node)
   (or (null? node) (equal? node '(()))))
 
-(define (gather-nodes-cps key nodes collect cont)
+(define (gather-nodes-cps key nodes collect cont #!optional (level 0))
   (if (nuull? nodes)
       (cont '())
       (let* ((node (car nodes))
@@ -154,7 +147,8 @@
 	  (cond ((nuull? nodes)
 		 (gather-nodes-cps key accum collect
 				   (lambda (t)
-				     (cont (collect (car node) t)))))
+				     (cont (collect (car node) t level)))
+                                   (+ level 1)))
 		((equal? (key (caar nodes)) val)
 		 (loop (cons (cdar nodes) accum) (cdr nodes)))
 		(else (gather-nodes-cps key accum collect
@@ -162,8 +156,10 @@
 					  (gather-nodes-cps
 					   key nodes collect
 					   (lambda (u)
-					     (cont (append (collect (car node) t)
-							   u))))))))))))
+					     (cont (append (collect (car node) t level)
+							   u)))
+                                           level))
+                                        (+ level 1))))))))
 
 (define (alist-tree-node val tree)
   (list (cons val tree)))
@@ -171,9 +167,9 @@
 (define (gather-nodes key nodes #!optional (collect alist-tree-node))
   (gather-nodes-cps key nodes collect values))
 
-(define (imbricate cs constructor relation levels-remaining)
+(define (imbricate cs constructor relation batch-continuation)
   (list->vector
-   (gather-nodes cdadr cs (constructor relation levels-remaining))))
+   (gather-nodes cdadr cs (constructor relation batch-continuation))))
 
 (define (partition-bindings key proc)
   (lambda (bindings)
@@ -224,13 +220,14 @@
        (map car (*properties*))))
 
 (define (json-api relation continue)
-  (lambda (node tree)
+  (lambda (node tree level)
     (let ((id (->string (alist-ref 'uuid node))))
       (list
        (json-api-object 
         id "concept"
         attributes: (properties-object node)
-        relationships: (if (and (null? tree) continue)
+        relationships: (if (and (= level (- (*batch-levels*) 1))
+                                (null? tree) continue)
                            (json-api-relationship 
                             relation (json-api-data (continue id)))
                            (json-api-relationship
