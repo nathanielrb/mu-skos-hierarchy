@@ -121,7 +121,7 @@ or directly:
 
 ```
 docker run -d \
-  -p 4028:4028 \
+  -p 4028:80 \
   -e  MU_DEFAULT_GRAPH="http://data.europa.eu/eurostat/ECOICOP"\
   -e  MU_SPARQL_ENDPOINT="http://127.0.0.1:8890/sparql"\
   -e  CONCEPT_SCHEME="http://data.europa.eu/eurostat/id/taxonomy/ECOICOP"\
