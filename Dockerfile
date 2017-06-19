@@ -1,3 +1,4 @@
 FROM nathanielrb/mu-chicken-template
-MAINTAINER "Nathaniel Rudavsky-Brody, <nathaniel.rb@gmail.com>"
+
+MAINTAINER "Nathaniel Rudavsky-Brody, <nathaniel.rudavsky@gmail.com>"
 

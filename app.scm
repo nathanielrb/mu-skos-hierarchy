@@ -15,6 +15,9 @@
 (define *scheme*
   (config-param "CONCEPT_SCHEME" #f read-uri))
 
+;; also allow hierarchy lists, to follow at leaves
+;; concept1,concept2,concept3
+
 (define *property-definitions*
   (config-param "INCLUDED_PROPERTIES" ""))
 
@@ -221,10 +224,11 @@
 
 (define (json-api relation continue)
   (lambda (node tree level)
-    (let ((id (->string (alist-ref 'uuid node))))
+    (let ((id (->string (alist-ref 'uuid node)))
+          (uri (write-uri (alist-ref 'child node))))
       (list
        (json-api-object 
-        id "concept"
+        id uri "concept"
         attributes: (properties-object node)
         relationships: (if (and (= level (- (*batch-levels*) 1))
                                 (null? tree) continue)
@@ -234,13 +238,14 @@
                             relation (json-api-data tree))))))))
 
 (define (json-ld relation continue)
-  (lambda (node tree)
+  (lambda (node tree level)
     (list
      (json-ld-object 
       (write-uri (alist-ref 'child node))
       "concept" 
       (append (properties-object node)
-              (if (and (null? tree) continue)
+              (if (and (= level (- (*batch-levels*) 1))
+                       (null? tree) continue)
                   (jkv-when relation (continue (alist-ref 'uuid node)))
                   (jkv-when relation (list->vector tree))))))))
 
@@ -283,7 +288,7 @@
             (map (match-lambda
                    ((id . node)
                     (json-api-object
-                     id "concept-scheme" 
+                     id (write-uri node) "concept-scheme" 
                      links: `((self . ,(conc "/schemes/" id))))))
                  concept-schemes))
            `((data
@@ -305,7 +310,7 @@
                   (map (match-lambda
                          ((id . node)
                           (json-api-object 
-                           id "concept"
+                           id node "concept"
                            links: `((self . ,(conc "/schemes/" scheme-id "/" id))))))
                        top-concepts))))
            (json-ld-object (write-uri scheme) "concept-scheme"
