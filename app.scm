@@ -63,7 +63,7 @@
      (cons uuid node)))
 
 (define (lang-or-none-filter var lang)
-  (format #f "lang(~A) = '~A' || lang(~A) = ''" 
+  (format #f "LANG(~A) = '~A' || LANG(~A) = ''" 
           var lang var))
 
 (define (get-node uuid)
