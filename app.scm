@@ -22,15 +22,15 @@
   (config-param "INCLUDED_PROPERTIES" ""))
 
 (define *concept-scheme-type*
-  (config-param "CONCEPT_SCHEME_TYPE" "skos:ConceptScheme" read-uri))
+  (config-param "CONCEPT_SCHEME_TYPE" 'skos:ConceptScheme read-uri))
 
-(define *concept-type* (config-param "CONCEPT_TYPE" "skos:Concept" read-uri))
+(define *concept-type* (config-param "CONCEPT_TYPE" 'skos:Concept read-uri))
 
 (define *top-concept-predicate*
-  (config-param "TOP_CONCEPT_PREDICATE" "skos:topConceptOf" read-uri))
+  (config-param "TOP_CONCEPT_PREDICATE" 'skos:topConceptOf read-uri))
 
 (define *broader-predicate*
-  (config-param "BROADER_PREDICATE" "skos:broader" read-uri))
+  (config-param "BROADER_PREDICATE" 'skos:broader read-uri))
 
 (define (split-properties property-definitions)
   (map (lambda (str) 
