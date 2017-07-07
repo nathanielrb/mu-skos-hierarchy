@@ -15,6 +15,12 @@
 (define *scheme*
   (config-param "CONCEPT_SCHEME" #f read-uri))
 
+(define *schemes*
+  (config-param "CONCEPT_SCHEMES" #f (lambda (scheme-list)
+                                       (and (pair? scheme-list)
+                                            (map read-uri
+                                                 (string-split scheme-list ","))))))
+
 ;; also allow hierarchy lists, to follow at leaves
 ;; concept1,concept2,concept3
 
@@ -50,7 +56,7 @@
   (query-with-vars (node uuid)
      (s-select
       '(?uuid ?node)
-      (s-triples `((?node ,(*top-concept-predicate*) ,scheme)
+      (s-triples `((?node ,(*top-concept-predicate*) ,(or scheme '?scheme))
                    (?node mu:uuid ?uuid))))
      (cons uuid node)))
 
@@ -94,7 +100,7 @@
        (map (property-query n)
             (*properties*))))
 
-(define (descendance-query-all-statements top-parent scheme levels #!optional inverse?)
+(define (descendance-query-all-statements top-parent schemes levels #!optional inverse?)
   (let loop ((level levels)
              (vars '())
              (order-by '())
@@ -109,7 +115,11 @@
                (new-statements `(,(if inverse?
                                       `(,parent  ,(*broader-predicate*) ,node)
                                       `(,node ,(*broader-predicate*) ,parent))
-                                 ,@(splice-when scheme `((,node skos:inScheme ,scheme)))
+                                 ,@(splice-when (and schemes
+                                                     `((UNION
+                                                        ,@(map (lambda (scheme)
+                                                                 `((,node skos:inScheme ,scheme)))
+                                                               schemes)))))
                                  (,node mu:uuid ,uuid)
                                  ,@(properties-query node level))))
           (loop (- level 1)
@@ -121,18 +131,18 @@
                     (conc (s-triples new-statements) statements)
                     (s-optional (conc (s-triples new-statements) statements))))))))
 
-(define (descendance-query scheme parent-uuid levels inverse?)
-  (hit-hashed-cache
-   *cache* (list 'Query scheme parent-uuid levels (*lang*) (*properties*))
+(define (descendance-query schemes parent-uuid levels inverse?)
+;;  (hit-hashed-cache
+;;   *cache* (list 'Query scheme parent-uuid levels (*lang*) (*properties*))
    (match-let (((vars order-by statements) 
-                (descendance-query-all-statements '?parent scheme levels inverse?)))
+                (descendance-query-all-statements '?parent schemes levels inverse?)))
      (sparql/select
       (s-select
        vars
        (s-triples
         `((?parent mu:uuid ,parent-uuid)
           ,@statements))
-       order-by: (string-join order-by " "))))))
+       order-by: (string-join order-by " ")))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Building Tree Structure
@@ -201,18 +211,18 @@
 (define (substr-end s #!optional (len 1))
   (substring s (- (string-length s) len)))
 
-(define (descendance scheme parent-uuid levels relation #!optional inverse?)
+(define (descendance schemes parent-uuid levels relation #!optional inverse?)
   (let ((levels-remaining (max 0 (- levels (*batch-levels*))))
-        (levels-now (min (*batch-levels*) levels)))
-    (hit-hashed-cache
-     *cache* (list 'Results scheme parent-uuid (*format*) levels (*lang*) (*properties*))
-     (let ((results (descendance-query scheme parent-uuid levels-now inverse?)))
+        (levels-now (min (*batch-levels*) levels)))        
+;;    (hit-hashed-cache
+;;     *cache* (list 'Results schemes parent-uuid (*format*) levels (*lang*) (*properties*))
+     (let ((results (descendance-query schemes parent-uuid levels-now inverse?)))
        (imbricate (map (partition-bindings substr-end unnumber) results) 
                   (format-constructor)
                   relation
                   (and (> levels-remaining 0)
-                      (lambda (id)
-                        (descendance scheme id levels-remaining relation inverse?))))))))
+                       (lambda (id)
+                         (descendance schemes id levels-remaining relation inverse?)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Data Format
@@ -230,8 +240,9 @@
        (json-api-object 
         id uri "concept"
         attributes: (properties-object node)
-        relationships: (if (and (= level (- (*batch-levels*) 1))
-                                (null? tree) continue)
+        relationships: (if (and continue
+                                (or (= level (- (*batch-levels*) 1))
+                                    (null? tree)))
                            (json-api-relationship 
                             relation (json-api-data (continue id)))
                            (json-api-relationship
@@ -263,8 +274,12 @@
       id))
 
 (define (scheme-or-default scheme-id)
-  (cond ((equal? scheme-id "_default")
-         (*scheme*))
+  (cond ((list? scheme-id)
+         #f)
+        ((equal? scheme-id "_default")
+         (or (*scheme*)
+             (*schemes*)
+             #f))
         ((equal? scheme-id "_all") #f)
         (else (get-node scheme-id))))
 
@@ -301,9 +316,10 @@
 
 (define top-concepts-call
    (rest-call (scheme-id)
-     (let* ((scheme (scheme-or-default scheme-id))
+     (let* ((scheme/s (scheme-or-default scheme-id))
             (top-concepts (get-top-concepts scheme))
-            (format (or ((request-vars) 'format) (*format*))))
+            (format (or ((request-vars) 'format) (*format*)))
+            (scheme (if (pair? scheme/s) (car scheme/s) scheme/s)))
        (if (equal? format "json-api")
            `((data 
               . ,(list->vector
@@ -322,13 +338,14 @@
                                        top-concepts)))))))))
 (define (descendance-call relation inverse?)
   (rest-call (scheme-id id)
-    (let* ((scheme (scheme-or-default scheme-id))
-           (id (concept-or-top scheme id))
+    (let* ((scheme/s (scheme-or-default scheme-id))
+           (schemes (and scheme/s (if (pair? scheme/s) scheme/s (list scheme/s))))
+           (id (concept-or-top (and schemes (car schemes)) id))
            (levels (string->number (or ((request-vars) 'levels) "1"))))
       (parameterize ((*properties* (or (request-properties) (*properties*)))
                      (*format* (or ((request-vars) 'format) (*format*)))
                      (*lang* (or ((request-vars) 'lang) (*lang*))))
-        (let ((descs (descendance scheme id levels relation)))
+        (let ((descs (descendance schemes id levels relation)))
           (if (equal? (*format*) "json-api")
               `((data . ,descs))
               (json-ld-object (write-uri
