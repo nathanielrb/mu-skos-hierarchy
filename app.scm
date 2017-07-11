@@ -1,3 +1,6 @@
+;; for multiple concept schemes, simply takes the UNION;
+;; should follow 2nd scheme only at empty leaves.
+
 (use spiffy spiffy-request-vars srfi-69 matchable irregex
      s-sparql mu-chicken-support)
 
@@ -16,13 +19,11 @@
   (config-param "CONCEPT_SCHEME" #f read-uri))
 
 (define *schemes*
-  (config-param "CONCEPT_SCHEMES" #f (lambda (scheme-list)
-                                       (and (pair? scheme-list)
-                                            (map read-uri
-                                                 (string-split scheme-list ","))))))
-
-;; also allow hierarchy lists, to follow at leaves
-;; concept1,concept2,concept3
+  (config-param "CONCEPT_SCHEMES" #f
+                (lambda (scheme-list)
+                  (and (pair? scheme-list)
+                       (map read-uri
+                            (string-split scheme-list ","))))))
 
 (define *property-definitions*
   (config-param "INCLUDED_PROPERTIES" ""))
@@ -132,8 +133,8 @@
                     (s-optional (conc (s-triples new-statements) statements))))))))
 
 (define (descendance-query schemes parent-uuid levels inverse?)
-;;  (hit-hashed-cache
-;;   *cache* (list 'Query scheme parent-uuid levels (*lang*) (*properties*))
+  (hit-hashed-cache
+   *cache* (list 'Query schemes parent-uuid levels (*lang*) (*properties*))
    (match-let (((vars order-by statements) 
                 (descendance-query-all-statements '?parent schemes levels inverse?)))
      (sparql/select
@@ -142,7 +143,7 @@
        (s-triples
         `((?parent mu:uuid ,parent-uuid)
           ,@statements))
-       order-by: (string-join order-by " ")))))
+       order-by: (string-join order-by " "))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Building Tree Structure
@@ -214,15 +215,15 @@
 (define (descendance schemes parent-uuid levels relation #!optional inverse?)
   (let ((levels-remaining (max 0 (- levels (*batch-levels*))))
         (levels-now (min (*batch-levels*) levels)))        
-;;    (hit-hashed-cache
-;;     *cache* (list 'Results schemes parent-uuid (*format*) levels (*lang*) (*properties*))
+    (hit-hashed-cache
+     *cache* (list 'Results schemes parent-uuid (*format*) levels (*lang*) (*properties*))
      (let ((results (descendance-query schemes parent-uuid levels-now inverse?)))
        (imbricate (map (partition-bindings substr-end unnumber) results) 
                   (format-constructor)
                   relation
                   (and (> levels-remaining 0)
                        (lambda (id)
-                         (descendance schemes id levels-remaining relation inverse?)))))))
+                         (descendance schemes id levels-remaining relation inverse?))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Data Format
@@ -362,8 +363,14 @@
 
 (define ancestors-call (descendance-call 'ancestors #t))
 
+(define  (clear-cache-call _)
+  (hash-table-clear! *cache*)
+  '((cache . "cleared")))
+
 (*handlers* `((GET ("test") ,(lambda (b) `((status . "success"))))
               (GET ("schemes") ,concept-schemes-call)
               (GET ("schemes" scheme-id) ,top-concepts-call)
               (GET ("schemes" scheme-id id "descendants") ,descendants-call)
               (GET ("schemes" scheme-id id "ancestors") ,ancestors-call)))
+
+(define-rest-call 'DELETE '("cache") clear-cache-call)
