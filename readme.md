@@ -34,6 +34,10 @@ Returns the ascending hierarchy from the concept with mu:uuid `concept-id`, or t
 
 Optional parameters: `levels` (defaults to 1), `lang`, `properties`, `format`.
 
+### DELETE /cache
+
+Clears the internal cache.
+
 ## Example
 
 When the default concept scheme is specified in the configuration (see below) and contains only one top concept, then this call will return the hierarchy to 5 levels:

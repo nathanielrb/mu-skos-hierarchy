@@ -367,10 +367,14 @@
   (hash-table-clear! *cache*)
   '((cache . "cleared")))
 
-(*handlers* `((GET ("test") ,(lambda (b) `((status . "success"))))
-              (GET ("schemes") ,concept-schemes-call)
-              (GET ("schemes" scheme-id) ,top-concepts-call)
-              (GET ("schemes" scheme-id id "descendants") ,descendants-call)
-              (GET ("schemes" scheme-id id "ancestors") ,ancestors-call)))
+(define-rest-call 'GET '("test") (lambda (b) `((status . "success"))))
+
+(define-rest-call 'GET '("schemes") concept-schemes-call)
+
+(define-rest-call 'GET '("schemes" scheme-id) top-concepts-call)
+
+(define-rest-call 'GET '("schemes" scheme-id id "descendants") descendants-call)
+
+(define-rest-call 'GET '("schemes" scheme-id id "ancestors") ancestors-call)
 
 (define-rest-call 'DELETE '("cache") clear-cache-call)
