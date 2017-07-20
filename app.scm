@@ -378,3 +378,8 @@
 (define-rest-call 'GET '("schemes" scheme-id id "ancestors") ancestors-call)
 
 (define-rest-call 'DELETE '("cache") clear-cache-call)
+
+(define-rest-call 'POST '("deltas") (lambda (_) 
+                                     (print "received deltas")
+                                     (print (read-request-json))
+                                     "thanks"))
