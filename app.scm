@@ -380,6 +380,6 @@
 (define-rest-call 'DELETE '("cache") clear-cache-call)
 
 (define-rest-call 'POST '("deltas") (lambda (_) 
-                                     (print "received deltas")
-                                     (print (read-request-json))
-                                     "thanks"))
+                                      (print "received deltas")
+                                      (print (read-request-json))
+                                      "thanks"))
