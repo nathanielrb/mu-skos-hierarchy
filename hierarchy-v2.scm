@@ -45,15 +45,17 @@
                        (first (car pairs))))))))))
         
 ;; should remove group on recurse, using a loop
-(define (imbricate groups key)
+;; and add formatter
+(define (imbricate groups key #!optional (formatter values))
   (let ((group (alist-ref key groups)))
     (if group
-        (cons key
-              (map (match-lambda
-                     ((node . attrs)
-                      (or (imbricate groups node)
-                          `(,node . ,attrs))))
-                   group))
+        (formatter
+         (cons key
+               (map (match-lambda
+                      ((node . attrs)
+                       (or (imbricate groups node)
+                           `(,node . ,attrs))))
+                    group)))
         #f)))
               
 (define r (query-statements "379436c4-08c3-459a-9b75-b094bdfdbaf4"))
