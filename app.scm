@@ -3,6 +3,8 @@
      http-client intarweb uri-common
      cjson)
 
+(*sparql-query-unpacker* unpack-sparql-bindings)
+
 (define *lang*
   (config-param "DEFAULT_LANGUAGE" "en"))
 
@@ -83,7 +85,7 @@
                  . ((id . ,(alist-ref 'uuid1 bindings))
                     (attributes
                      . (,@(G '|1| bindings))))))))
-         (sparql/select
+         (sparql-select
           (s-select
            (append '(?child0 ?uuid0) (Vs '|0|)
                    '(?child1 ?uuid1) (Vs '|1|))
@@ -284,7 +286,6 @@
 
 (define-rest-call 'POST '("deltas") (lambda (_) 
                                       (print "received deltas")
-                                      (print (read-request-json))
                                       "thanks"))
 
    
