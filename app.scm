@@ -3,8 +3,6 @@
      http-client intarweb uri-common
      cjson)
 
-(*sparql-query-unpacker* unpack-sparql-bindings)
-
 (define *lang*
   (config-param "DEFAULT_LANGUAGE" "en"))
 
