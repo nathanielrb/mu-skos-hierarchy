@@ -54,7 +54,8 @@
 (define *cache* (make-hash-table))
 
 (define (lang-or-none-filter var lang)
-  `(FILTER (|@()| (LANG ,var) = ,lang |\|\|| (LANG ,var) = "")))
+  ;; `(FILTER (|@()| (LANG ,var) = ,lang |\|\|| (LANG ,var) = "")))
+  `(FILTER (\|\| (= (LANG ,var) ,(->string lang)) (= (LANG ,var) ""))))
 
 ;; clean this up, please
 (define (query-statements schemes uuid properties lang)
@@ -87,8 +88,8 @@
           (s-select
            (append '(?child0 ?uuid0) (Vs '|0|)
                    '(?child1 ?uuid1) (Vs '|1|))
-           (s-triples `((?parent mu:uuid ,uuid)
-                        ,@(splice-when
+           (write-sparql `((?parent mu:uuid ,uuid)
+                           ,@(splice-when
                            (and schemes
                                 (join
                                  (map (lambda (scheme)
@@ -151,7 +152,7 @@
   (query-unique-with-vars (node)
      (s-select
       '?node
-      (s-triples `((?node mu:uuid ,uuid))))
+      (write-sparql `((?node mu:uuid ,uuid))))
      node))
 
 (define (descendance schemes uuid 
@@ -168,7 +169,7 @@
   (query-with-vars (node uuid)
      (s-select
       '(?uuid ?node)
-      (s-triples `((?node ,(*top-concept-predicate*) ,(or scheme '?scheme))
+      (write-sparql `((?node ,(*top-concept-predicate*) ,(or scheme '?scheme))
                    (?node mu:uuid ?uuid))))
      (cons uuid node)))
 
@@ -181,7 +182,7 @@
   (query-with-vars (node uuid)
     (s-select
      '(?uuid ?node)
-     (s-triples `((?node a ,(*concept-scheme-type*))
+     (write-sparql `((?node a ,(*concept-scheme-type*))
                   (?node mu:uuid ?uuid))))
      (cons uuid node)))
 
